@@ -585,6 +585,13 @@
         <input type="number" id="cm-rate" value="10" min="0" max="100" step="0.1">
       </div>
     </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>이전 누적 잔액 (원)</label>
+        <input type="number" id="cm-initial" min="0" step="1" placeholder="0" value="0">
+        <div class="text-sm" style="color:var(--gray-500);margin-top:4px">앱 사용 전 이미 적립된 마일리지 잔액이 있으면 입력하세요</div>
+      </div>
+    </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeClinicModal()">취소</button>
       <button class="btn btn-primary" onclick="saveClinic()">저장</button>
@@ -854,10 +861,12 @@ function today() { return new Date().toISOString().slice(0, 10); }
 function thisMonth() { return new Date().toISOString().slice(0, 7); }
 
 function getClinicBalance(clinicId) {
+  const clinic = clinics.find(c => c.id === clinicId);
+  const initial = clinic?.initialBalance || 0;
   const txs = transactions.filter(t => t.clinicId === clinicId);
   const earned = txs.filter(t => t.type === 'earn').reduce((s, t) => s + t.amount, 0);
   const spent = txs.filter(t => t.type === 'spend').reduce((s, t) => s + t.amount, 0);
-  return { earned, spent, balance: earned - spent };
+  return { earned, spent, balance: initial + earned - spent, initial };
 }
 
 function getClinicTotalRx(clinicId) {
@@ -998,14 +1007,14 @@ function renderClinics(filter = '', sort = '') {
 
   const tbody = document.getElementById('clinic-table-body');
   tbody.innerHTML = list.length ? list.map(c => {
-    const { earned, spent, balance } = getClinicBalance(c.id);
+    const { earned, spent, balance, initial } = getClinicBalance(c.id);
     const totalRx = getClinicTotalRx(c.id);
     const balColor = balance < 0 ? 'var(--danger)' : 'var(--primary)';
     return `<tr>
       <td><strong>${c.name}</strong>${c.branch ? ` <span class="text-sm">(${c.branch})</span>` : ''}</td>
       <td><span class="badge badge-green">${c.rate}%</span></td>
       <td class="td-num">${fmtNum(totalRx)}</td>
-      <td class="td-num" style="color:var(--primary)">${fmtNum(earned)}</td>
+      <td class="td-num" style="color:var(--primary)">${fmtNum(earned)}${initial > 0 ? `<div class="text-sm" style="color:var(--gray-500)">이전 ${fmtNum(initial)} 포함</div>` : ''}</td>
       <td class="td-num" style="color:var(--danger)">${fmtNum(spent)}</td>
       <td class="td-num"><strong style="color:${balColor}">${fmtNum(balance)}</strong></td>
       <td>
@@ -1027,9 +1036,11 @@ function openClinicModal(id = null) {
     document.getElementById('cm-name').value = c.name;
     document.getElementById('cm-branch').value = c.branch || '';
     document.getElementById('cm-rate').value = c.rate;
+    document.getElementById('cm-initial').value = c.initialBalance || 0;
   } else {
     ['cm-name','cm-branch'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('cm-rate').value = 10;
+    document.getElementById('cm-initial').value = 0;
   }
   document.getElementById('clinic-modal').classList.add('open');
 }
@@ -1051,12 +1062,13 @@ function saveClinic() {
 
   let savedId = editingClinicId;
   const branch = document.getElementById('cm-branch').value.trim();
+  const initialBalance = Math.round(parseFloat(document.getElementById('cm-initial').value) || 0);
   if (editingClinicId) {
     const c = clinics.find(x => x.id === editingClinicId);
-    Object.assign(c, { name, branch, rate });
+    Object.assign(c, { name, branch, rate, initialBalance });
   } else {
     savedId = uid();
-    clinics.push({ id: savedId, name, branch, rate });
+    clinics.push({ id: savedId, name, branch, rate, initialBalance });
   }
   save();
   closeClinicModal();
@@ -1945,7 +1957,7 @@ function getReportData() {
   }));
   const monthSpend = spendRows.reduce((s, r) => s + r.amount, 0);
 
-  const { earned, spent, balance } = getClinicBalance(clinicId);
+  const { earned, spent, balance, initial } = getClinicBalance(clinicId);
   // 실제 처방 기간이 저장돼 있으면 그대로 사용 (예: 5월 15일 ~ 6월 14일)
   let periodStr;
   const withRange = earnTxs.filter(t => t.rxStart && t.rxEnd);
@@ -1960,7 +1972,7 @@ function getReportData() {
     periodStr = `${String(y).slice(2)}년 ${m}월 1일 ~ ${m}월 ${lastDay}일`;
   }
 
-  return { c, month, rate, items, monthTotal, monthMileage, spendRows, monthSpend, earned, spent, balance, periodStr };
+  return { c, month, rate, items, monthTotal, monthMileage, spendRows, monthSpend, earned, spent, balance, initial, periodStr };
 }
 
 function renderReport() {
@@ -2039,7 +2051,7 @@ function renderReport() {
     drawRow(['처방 내역 없음', '', '', '', ''], '#ffffff', '#9ca3af', false);
   }
   drawRow(['처방액 합계', '', '', fmtNum(d.monthTotal), fmtNum(d.monthMileage)], '#ddebf7', '#1f4e79', true);
-  drawRow([`누적 마일리지 (적립률 ${d.rate}%)`, '', '', '', fmtNum(d.earned)], '#fce4d6', '#c55a11', true);
+  drawRow([`누적 마일리지 (적립률 ${d.rate}%${d.initial > 0 ? ', 이전잔액 포함' : ''})`, '', '', '', fmtNum(d.initial + d.earned)], '#fce4d6', '#c55a11', true);
 
   // 판촉물 차감
   y += 30;
@@ -2138,7 +2150,7 @@ function copyReportText() {
   } else {
     txt += '이번달 처방 내역 없음\n';
   }
-  txt += `누적 적립: ${fmtNum(d.earned)}원\n`;
+  txt += `누적 적립${d.initial > 0 ? ' (이전잔액 포함)' : ''}: ${fmtNum(d.initial + d.earned)}원\n`;
   if (d.spendRows.length) {
     txt += `\n🎁 판촉물 차감\n`;
     d.spendRows.forEach(r => { txt += `· ${r.date?.slice(2)} ${r.name} × ${r.qty} = ${fmtNum(r.amount)}원\n`; });
