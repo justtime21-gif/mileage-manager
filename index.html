@@ -762,66 +762,62 @@ function migrateCombinedPromoItems() {
   }
 }
 
-// 오스템 의약품 브로셔 기준 약품 추가 (이미 있는 약품은 건너뜀)
-function migrateBrochureDrugs() {
-  const brochure = [
-    { key: '아목시스', name: '아목시스 캡슐 500mg(아목시실린)', price: 81, category: '항생제' },
-    { key: '아목시클라', name: '아목시클라 정 375mg(아목시실린+클라불란산)', price: 300, category: '항생제' },
-    { key: '세파클리', name: '세파클리 캡슐 250mg(세파클러)', price: 372, category: '항생제' },
-    { key: '록소리펜', name: '록소리펜 정 60mg(록소프로펜)', price: 125, category: '진통소염제' },
-    { key: '나프록소', name: '나프록소 정 275mg(나프록센)', price: 115, category: '진통소염제' },
-    { key: '아세클로페낙', name: '오스템 아세클로페낙 정 100mg', price: 160, category: '진통소염제' },
-    { key: '알마펜', name: '알마펜 정 500mg(알마게이트)', price: 55, category: '소화기관용약' },
-    { key: '모사프리', name: '모사프리 정 5mg(모사프리드)', price: 103, category: '소화기관용약' },
-    { key: '에스오메프라졸', name: '오스템에스오메프라졸 20mg', price: 399, category: '소화기관용약' },
+function getDefaultRxDrugs() {
+  return [
+    { id: uid(), name: '아목시스 캡슐 500mg(아목시실린)', price: 81, code: '053500080', category: '항생제' },
+    { id: uid(), name: '아목시클라 정 375mg(아목시실린+클라불란산)', price: 300, code: '053500060', category: '항생제' },
+    { id: uid(), name: '세파클리 캡슐 250mg(세파클러)', price: 372, code: '053500040', category: '항생제' },
+    { id: uid(), name: '록소리펜 정 60mg(록소프로펜)', price: 125, code: '053500050', category: '진통소염제' },
+    { id: uid(), name: '나프록소 정 275mg(나프록센)', price: 115, code: '053500020', category: '진통소염제' },
+    { id: uid(), name: '오스템 아세클로페낙 정 100mg', price: 160, code: '053500180', category: '진통소염제' },
+    { id: uid(), name: '알마펜 정 500mg(알마게이트)', price: 55, code: '053500090', category: '소화기관용약' },
+    { id: uid(), name: '모사프리 정 5mg(모사프리드)', price: 103, code: '053500100', category: '소화기관용약' },
+    { id: uid(), name: '오스템에스오메프라졸 20mg', price: 399, code: '053500210', category: '소화기관용약' },
+    { id: uid(), name: '오스템클로르헥시딘액0.12%(클로르헥시딘글루콘산염액100mL)', price: 910, code: '053500191', category: '치과구강용약' },
+    { id: uid(), name: '오스템클로르헥시딘액0.12%(클로르헥시딘글루콘산염액15mL)', price: 209, code: '053500193', category: '치과구강용약' },
   ];
+}
+
+function migrateBrochureDrugs() {
+  const canonical = [
+    { name: '아목시스 캡슐 500mg(아목시실린)', price: 81, code: '053500080', category: '항생제', key: '아목시스' },
+    { name: '아목시클라 정 375mg(아목시실린+클라불란산)', price: 300, code: '053500060', category: '항생제', key: '아목시클라' },
+    { name: '세파클리 캡슐 250mg(세파클러)', price: 372, code: '053500040', category: '항생제', key: '세파클리' },
+    { name: '록소리펜 정 60mg(록소프로펜)', price: 125, code: '053500050', category: '진통소염제', key: '록소리펜' },
+    { name: '나프록소 정 275mg(나프록센)', price: 115, code: '053500020', category: '진통소염제', key: '나프록소' },
+    { name: '오스템 아세클로페낙 정 100mg', price: 160, code: '053500180', category: '진통소염제', key: '아세클로페낙' },
+    { name: '알마펜 정 500mg(알마게이트)', price: 55, code: '053500090', category: '소화기관용약', key: '알마펜' },
+    { name: '모사프리 정 5mg(모사프리드)', price: 103, code: '053500100', category: '소화기관용약', key: '모사프리' },
+    { name: '오스템에스오메프라졸 20mg', price: 399, code: '053500210', category: '소화기관용약', key: '에스오메프라졸' },
+    { name: '오스템클로르헥시딘액0.12%(클로르헥시딘글루콘산염액100mL)', price: 910, code: '053500191', category: '치과구강용약', key: '100mL' },
+    { name: '오스템클로르헥시딘액0.12%(클로르헥시딘글루콘산염액15mL)', price: 209, code: '053500193', category: '치과구강용약', key: '15mL' },
+  ];
+  // 구버전 기본 약품 식별자 (사용자가 직접 추가한 약품과 겹치지 않는 고유 이름)
+  const legacyNames = ['아목크라건정', '시원나정', '타이레놀8시간이알서방정', '에렉신정', '가스탄정', 'CHX 15ml', '0.6mL'];
   let changed = false;
-  brochure.forEach(b => {
-    const exist = rxDrugs.find(d => d.name.includes(b.key));
-    if (!exist) {
-      rxDrugs.push({ id: uid(), name: b.name, price: b.price, category: b.category });
-      changed = true;
-    } else if (exist.name === b.key && exist.price === b.price) {
-      // 성분명 없는 짧은 이름(예: '알마펜')은 브로셔 전체 이름으로 갱신 (사진 인식 매칭용)
-      exist.name = b.name;
+
+  // 구버전 기본 약품 제거 (정규 약품으로 교체됨)
+  const before = rxDrugs.length;
+  rxDrugs = rxDrugs.filter(d => !legacyNames.some(l => d.name.includes(l)));
+  if (rxDrugs.length !== before) changed = true;
+
+  // 정규 약품 추가 또는 이름/코드/분류 업데이트
+  canonical.forEach(c => {
+    const exist = rxDrugs.find(d =>
+      d.code === c.code || d.name === c.name || (!d.code && d.name.includes(c.key))
+    );
+    if (exist) {
+      if (exist.name !== c.name || exist.price !== c.price || exist.code !== c.code || exist.category !== c.category) {
+        Object.assign(exist, { name: c.name, price: c.price, code: c.code, category: c.category });
+        changed = true;
+      }
+    } else {
+      rxDrugs.push({ id: uid(), name: c.name, price: c.price, code: c.code, category: c.category });
       changed = true;
     }
   });
 
-  // 통계 사진에서 확인된 오스템 보험코드 자동 등록 (코드 없는 약품만)
-  const knownCodes = [
-    { key: '아목시스', code: '053500080' },
-    { key: '아목시클라', code: '053500060' },
-    { key: '세파클리', code: '053500040' },
-    { key: '록소리펜', code: '053500050' },
-    { key: '나프록소', code: '053500020' },
-    { key: '아세클로페낙', code: '053500180' },
-    { key: '알마펜', code: '053500090' },
-    { key: '모사프리', code: '053500100' },
-    { key: '에스오메프라졸', code: '053500210' },
-    { key: '오스템클로르헥시딘', code: '053500193', nameHas: '15mL' },
-    { key: '오스템클로르헥시딘', code: '053500191' },
-  ];
-  knownCodes.forEach(kc => {
-    const d = rxDrugs.find(x => x.name.includes(kc.key) && !x.code && (!kc.nameHas || x.name.includes(kc.nameHas)));
-    if (d) { d.code = kc.code; changed = true; }
-  });
-
   if (changed) DB.set('rxDrugs', rxDrugs);
-}
-
-function getDefaultRxDrugs() {
-  return [
-    { id: uid(), name: '아목크라건정375mg(아목시실린-클라불란산칼륨)', price: 300, category: '항생제' },
-    { id: uid(), name: '시원나정(록소프로펜나트륨수화물68.1mg)', price: 125, category: '진통소염제' },
-    { id: uid(), name: '타이레놀8시간이알서방정(아세트아미노펜0.65g)', price: 70, category: '진통소염제' },
-    { id: uid(), name: '에렉신정(에페리손염산염50mg)', price: 115, category: '골격근이완제' },
-    { id: uid(), name: '오스템클로르헥시딘액0.12%(클로르헥시딘글루콘산염액0.6mL)', price: 910, category: '치과구강용약' },
-    { id: uid(), name: '가스탄정(모사프리드시트르산염수화물5.29mg)', price: 103, category: '소화기관용약' },
-    { id: uid(), name: 'CHX 15ml', price: 206, category: '치과구강용약' },
-    { id: uid(), name: '알마펜', price: 55, category: '진통소염제' },
-    { id: uid(), name: '세파클리', price: 372, category: '항생제' },
-  ];
 }
 
 function getDefaultPromoItems() {
