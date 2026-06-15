@@ -1,0 +1,2212 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>거래선 마일리지 관리</title>
+<style>
+  :root {
+    --primary: #1a6b3c;
+    --primary-light: #e8f5ee;
+    --primary-dark: #134d2b;
+    --accent: #f0a500;
+    --danger: #e53e3e;
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-500: #6b7280;
+    --gray-700: #374151;
+    --gray-900: #111827;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; background: var(--gray-50); color: var(--gray-900); }
+
+  /* Layout */
+  .app { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: 220px; background: var(--primary-dark); color: white;
+    display: flex; flex-direction: column; position: fixed; top: 0; left: 0; height: 100vh;
+  }
+  .sidebar-logo { padding: 20px 16px; border-bottom: 1px solid rgba(255,255,255,0.15); }
+  .sidebar-logo h1 { font-size: 14px; font-weight: 700; line-height: 1.4; }
+  .sidebar-logo small { font-size: 11px; opacity: 0.6; }
+  .sidebar nav { flex: 1; padding: 12px 8px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    border-radius: 8px; cursor: pointer; font-size: 14px; margin-bottom: 2px;
+    transition: background 0.15s;
+  }
+  .nav-item:hover { background: rgba(255,255,255,0.1); }
+  .nav-item.active { background: rgba(255,255,255,0.2); font-weight: 600; }
+  .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+  .main { margin-left: 220px; flex: 1; padding: 24px; }
+
+  /* Page */
+  .page { display: none; }
+  .page.active { display: block; }
+  .page-header { margin-bottom: 24px; }
+  .page-header h2 { font-size: 22px; font-weight: 700; }
+  .page-header p { color: var(--gray-500); font-size: 13px; margin-top: 4px; }
+
+  /* Cards */
+  .card {
+    background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    padding: 20px; margin-bottom: 16px;
+  }
+  .card-title { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: var(--gray-700); }
+
+  /* Stats */
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+  .stat-card {
+    background: white; border-radius: 12px; padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .stat-label { font-size: 12px; color: var(--gray-500); margin-bottom: 8px; }
+  .stat-value { font-size: 24px; font-weight: 700; color: var(--primary); }
+  .stat-sub { font-size: 12px; color: var(--gray-500); margin-top: 4px; }
+
+  /* Table */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { background: var(--gray-50); padding: 10px 12px; text-align: left; font-weight: 600; font-size: 13px; color: var(--gray-700); border-bottom: 2px solid var(--gray-200); }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--gray-100); vertical-align: middle; }
+  tr:hover td { background: var(--gray-50); }
+  .td-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* Badges */
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 20px;
+    font-size: 12px; font-weight: 500;
+  }
+  .badge-green { background: var(--primary-light); color: var(--primary); }
+  .badge-orange { background: #fff7e6; color: #b45309; }
+  .badge-red { background: #fee2e2; color: var(--danger); }
+  .badge-gray { background: var(--gray-100); color: var(--gray-500); }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;
+    border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer;
+    border: none; transition: all 0.15s;
+  }
+  .btn-primary { background: var(--primary); color: white; }
+  .btn-primary:hover { background: var(--primary-dark); }
+  .btn-outline { background: white; color: var(--gray-700); border: 1px solid var(--gray-300); }
+  .btn-outline:hover { background: var(--gray-50); }
+  .btn-danger { background: var(--danger); color: white; }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+  .btn-accent { background: var(--accent); color: white; }
+
+  /* Form */
+  .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 16px; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group label { font-size: 13px; font-weight: 500; color: var(--gray-700); }
+  .form-group input, .form-group select, .form-group textarea {
+    padding: 8px 12px; border: 1px solid var(--gray-300); border-radius: 8px;
+    font-size: 14px; font-family: inherit; outline: none;
+  }
+  .form-group input:focus, .form-group select:focus {
+    border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light);
+  }
+  .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+
+  /* Modal */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+    z-index: 1000; align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: white; border-radius: 16px; padding: 28px; width: 90%; max-width: 560px;
+    max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+  }
+  .modal h3 { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+  .modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--gray-200); }
+
+  /* Prescription items table */
+  .rx-items-header { display: grid; grid-template-columns: 3fr 70px 90px 100px auto; gap: 8px; padding: 8px 0; font-size: 12px; font-weight: 600; color: var(--gray-500); border-bottom: 1px solid var(--gray-200); margin-bottom: 8px; }
+  .rx-item-row { display: grid; grid-template-columns: 3fr 70px 90px 100px auto; gap: 8px; margin-bottom: 8px; align-items: center; }
+  .rx-item-row input { padding: 6px 8px; border: 1px solid var(--gray-300); border-radius: 6px; font-size: 13px; width: 100%; }
+  .rx-item-row input:focus { outline: none; border-color: var(--primary); }
+  .rx-item-row select:focus { outline: none; border-color: var(--primary); }
+  .rx-total { background: var(--primary-light); border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
+  .rx-total-label { font-size: 13px; color: var(--primary-dark); font-weight: 600; }
+  .rx-total-value { font-size: 18px; font-weight: 700; color: var(--primary); }
+
+  /* Search */
+  .search-bar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; }
+  .search-input { flex: 1; padding: 9px 12px; border: 1px solid var(--gray-300); border-radius: 8px; font-size: 14px; outline: none; }
+  .search-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; background: var(--gray-100); border-radius: 8px; padding: 4px; margin-bottom: 20px; width: fit-content; }
+  .tab { padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; color: var(--gray-500); }
+  .tab.active { background: white; color: var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+  /* Mileage bar */
+  .mileage-bar { background: var(--gray-200); border-radius: 4px; height: 6px; overflow: hidden; margin-top: 4px; }
+  .mileage-fill { background: var(--primary); height: 100%; border-radius: 4px; transition: width 0.3s; }
+
+  /* Alert */
+  .alert { padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
+  .alert-info { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+  .alert-success { background: var(--primary-light); color: var(--primary-dark); border: 1px solid #a7f3d0; }
+
+  /* Empty state */
+  .empty { text-align: center; padding: 60px 20px; color: var(--gray-500); }
+  .empty-icon { font-size: 48px; margin-bottom: 12px; }
+  .empty p { font-size: 14px; }
+
+  /* Tooltip-like sub info */
+  .text-sm { font-size: 12px; color: var(--gray-500); }
+  .text-right { text-align: right; }
+  .flex { display: flex; }
+  .items-center { align-items: center; }
+  .justify-between { justify-content: space-between; }
+  .gap-8 { gap: 8px; }
+  .mt-8 { margin-top: 8px; }
+
+  /* History items */
+  .history-item {
+    display: flex; align-items: flex-start; gap: 12px; padding: 12px 0;
+    border-bottom: 1px solid var(--gray-100);
+  }
+  .history-icon {
+    width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-size: 16px; flex-shrink: 0;
+  }
+  .history-icon.earn { background: var(--primary-light); }
+  .history-icon.spend { background: #fee2e2; }
+  .history-info { flex: 1; }
+  .history-clinic { font-weight: 600; font-size: 14px; }
+  .history-desc { font-size: 12px; color: var(--gray-500); margin-top: 2px; }
+  .history-amount { font-weight: 700; font-size: 15px; }
+  .history-amount.earn { color: var(--primary); }
+  .history-amount.spend { color: var(--danger); }
+  .history-date { font-size: 11px; color: var(--gray-500); }
+
+  /* Promo items grid */
+  .promo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+  .promo-card {
+    border: 1px solid var(--gray-200); border-radius: 10px; padding: 16px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .promo-card:hover { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-light); }
+  .promo-card.selected { border-color: var(--primary); background: var(--primary-light); }
+  .promo-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .promo-price { font-size: 16px; font-weight: 700; color: var(--primary); }
+
+  @media (max-width: 900px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .sidebar { width: 64px; }
+    .nav-item { justify-content: center; padding: 12px 8px; }
+    .nav-item span:not(.nav-icon) { display: none; }
+    .nav-icon { font-size: 22px; width: auto; }
+    .sidebar-logo { padding: 16px 8px; text-align: center; }
+    .sidebar-logo h1 { font-size: 0; }
+    .sidebar-logo h1::before { content: '💊'; font-size: 22px; }
+    .sidebar-logo small { display: none; }
+    .main { margin-left: 64px; padding: 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h1>💊 마일리지 관리</h1>
+      <small>거래선 처방 마일리지</small>
+    </div>
+    <nav>
+      <div class="nav-item active" onclick="navigate('dashboard')">
+        <span class="nav-icon">🏠</span><span>대시보드</span>
+      </div>
+      <div class="nav-item" onclick="navigate('clinics')">
+        <span class="nav-icon">🏥</span><span>거래선 관리</span>
+      </div>
+      <div class="nav-item" onclick="navigate('prescriptions')">
+        <span class="nav-icon">📋</span><span>처방 입력</span>
+      </div>
+      <div class="nav-item" onclick="navigate('redeem')">
+        <span class="nav-icon">🎁</span><span>판촉물 차감</span>
+      </div>
+      <div class="nav-item" onclick="navigate('rx-drugs')">
+        <span class="nav-icon">💊</span><span>처방약품 관리</span>
+      </div>
+      <div class="nav-item" onclick="navigate('promo-items')">
+        <span class="nav-icon">📦</span><span>판촉물 목록</span>
+      </div>
+      <div class="nav-item" onclick="navigate('history')">
+        <span class="nav-icon">📊</span><span>이력 조회</span>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- Dashboard -->
+    <div id="page-dashboard" class="page active">
+      <div class="page-header flex justify-between items-center">
+        <div>
+          <h2>대시보드</h2>
+          <p id="dash-date">오늘 날짜</p>
+        </div>
+        <button class="btn btn-primary" onclick="navigate('prescriptions')">+ 처방 입력</button>
+      </div>
+      <div class="stats-grid" id="dash-stats"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="card">
+          <div class="card-title">마일리지 잔액 TOP 10</div>
+          <div id="dash-top-clinics"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">최근 처방 이력</div>
+          <div id="dash-recent"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Clinics -->
+    <div id="page-clinics" class="page">
+      <div class="page-header flex justify-between items-center">
+        <div>
+          <h2>거래선 관리</h2>
+          <p>치과별 마일리지 적립률 및 잔액 관리</p>
+        </div>
+        <button class="btn btn-primary" onclick="openClinicModal()">+ 거래선 추가</button>
+      </div>
+      <div class="card">
+        <div class="search-bar">
+          <input class="search-input" type="text" placeholder="거래선명 검색..." oninput="filterClinics(this.value)">
+          <select id="clinic-filter-sort" onchange="filterClinics(document.querySelector('.search-input').value)" style="padding:9px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;outline:none;">
+            <option value="name">이름순</option>
+            <option value="balance-desc">잔액 높은순</option>
+            <option value="balance-asc">잔액 낮은순</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>거래선명</th>
+                <th>적립률</th>
+                <th class="td-num">총 처방액</th>
+                <th class="td-num">총 적립</th>
+                <th class="td-num">총 차감</th>
+                <th class="td-num">잔액</th>
+                <th>관리</th>
+              </tr>
+            </thead>
+            <tbody id="clinic-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Prescriptions -->
+    <div id="page-prescriptions" class="page">
+      <div class="page-header flex justify-between items-center">
+        <div>
+          <h2>처방 입력</h2>
+          <p>월별 원외처방 통계를 입력하여 마일리지를 적립합니다</p>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="card">
+          <div class="card-title">처방 정보 입력</div>
+          <div class="form-row" style="grid-template-columns:1fr">
+            <div class="form-group">
+              <label>거래선 선택</label>
+              <div style="display:flex;gap:8px">
+                <select id="rx-clinic" onchange="updateRxRate()" style="flex:1">
+                  <option value="">거래선을 선택하세요</option>
+                </select>
+                <button class="btn btn-outline" style="white-space:nowrap" onclick="openClinicModalFromRx()">+ 신규 등록</button>
+              </div>
+            </div>
+          </div>
+          <div class="form-row" style="grid-template-columns:1fr 1fr">
+            <div class="form-group">
+              <label>처방 기간</label>
+              <div style="display:flex;gap:6px;align-items:center">
+                <input type="date" id="rx-start" onchange="autoSetRxEnd()" style="flex:1;padding:8px 10px;border:1px solid var(--gray-300);border-radius:8px;font-size:13px;outline:none">
+                <span style="color:var(--gray-500)">~</span>
+                <input type="date" id="rx-end" style="flex:1;padding:8px 10px;border:1px solid var(--gray-300);border-radius:8px;font-size:13px;outline:none">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>적립률 (%)</label>
+              <input type="number" id="rx-rate" min="0" max="100" step="0.1" value="10" oninput="calcRxTotal()">
+            </div>
+          </div>
+
+          <div style="margin-bottom:16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px">
+            <div class="flex justify-between items-center" style="margin-bottom:8px">
+              <span style="font-size:13px;font-weight:700;color:#1e40af">📷 통계 사진 인식</span>
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-sm" style="background:#3b82f6;color:white;font-weight:600" onclick="document.getElementById('stats-photo-input').click()">사진 선택</button>
+                <button class="btn btn-sm" style="background:#1e40af;color:white;font-weight:600" id="ocr-run-btn" onclick="runStatsOcr()" disabled>🔍 인식 실행</button>
+              </div>
+            </div>
+            <input type="file" id="stats-photo-input" accept="image/*" multiple style="display:none" onchange="addStatsPhotos(this.files); this.value=''">
+            <div class="text-sm" style="color:#1e40af">원외처방 통계 사진을 선택하거나 캡처 후 붙여넣기(Cmd+V) 하세요. <strong>두 장 이상이면 모두 추가</strong>하면 한 번에 인식됩니다. 통계 연월(처방 기간)도 자동으로 인식합니다.</div>
+            <div id="stats-photo-preview-wrap" style="display:none;margin-top:10px;gap:8px;flex-wrap:wrap"></div>
+            <div id="ocr-status" style="font-size:12px;margin-top:6px"></div>
+          </div>
+
+          <div style="margin-bottom:16px">
+            <div class="flex justify-between items-center" style="margin-bottom:8px">
+              <span style="font-size:13px;font-weight:600;color:var(--gray-700)">처방 품목</span>
+              <button class="btn btn-outline btn-sm" onclick="addRxItem()">+ 품목 추가</button>
+            </div>
+            <div class="rx-items-header">
+              <span>약품 선택</span><span>처방량</span><span>단가(원)</span><span>금액(원)</span><span></span>
+            </div>
+            <div id="rx-items-list"></div>
+            <div class="rx-total">
+              <div>
+                <div class="rx-total-label">처방액 합계</div>
+                <div class="text-sm" id="rx-mileage-preview">마일리지: 0원</div>
+              </div>
+              <div class="rx-total-value" id="rx-total-display">0원</div>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:16px">
+            <label>메모 (선택)</label>
+            <textarea id="rx-memo" rows="2" style="resize:vertical;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:13px;font-family:inherit;outline:none" placeholder="특이사항 등"></textarea>
+          </div>
+
+          <div class="form-actions">
+            <button class="btn btn-outline" onclick="clearRxForm()">초기화</button>
+            <button class="btn btn-primary" onclick="saveRx()">💾 저장 및 적립</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">처방 입력 이력</div>
+          <div class="tabs">
+            <div class="tab active" onclick="switchRxTab('all', this)">전체</div>
+            <div class="tab" onclick="switchRxTab('month', this)">이번달</div>
+          </div>
+          <div id="rx-history-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Redeem -->
+    <div id="page-redeem" class="page">
+      <div class="page-header">
+        <h2>판촉물 차감</h2>
+        <p>마일리지로 판촉물을 구매하고 잔액을 차감합니다</p>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="card">
+          <div class="card-title">차감 정보 입력</div>
+          <div class="form-group" style="margin-bottom:16px">
+            <label>거래선 선택</label>
+            <select id="redeem-clinic" onchange="updateRedeemBalance()">
+              <option value="">거래선을 선택하세요</option>
+            </select>
+          </div>
+          <div id="redeem-balance-info" style="margin-bottom:16px;display:none">
+            <div class="alert alert-info">
+              <div style="font-weight:600;margin-bottom:4px" id="redeem-clinic-name">-</div>
+              <div>현재 잔액: <strong id="redeem-balance-display" style="font-size:16px">0원</strong></div>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:16px">
+            <label>차감 날짜</label>
+            <input type="date" id="redeem-date">
+          </div>
+
+          <div style="margin-bottom:16px;background:#fef9e7;border:1px solid #f6e05e;border-radius:10px;padding:14px">
+            <div class="flex justify-between items-center" style="margin-bottom:8px">
+              <span style="font-size:13px;font-weight:700;color:#975a16">💬 카톡 주문 자동 인식</span>
+              <button class="btn btn-sm" style="background:#ecc94b;color:#5f370e;font-weight:600" onclick="parseKakaoOrder()">자동 인식</button>
+            </div>
+            <textarea id="kakao-order-text" rows="3" placeholder="카톡 주문 내용을 그대로 붙여넣으세요&#10;예) 핸드페이퍼 타월 2개, PDRN 2개&#10;     리도카글액 6개 부탁드려요" style="width:100%;resize:vertical;padding:8px 10px;border:1px solid #f6e05e;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:white"></textarea>
+            <div id="kakao-parse-result" style="font-size:12px;margin-top:6px"></div>
+          </div>
+
+          <div style="margin-bottom:16px">
+            <div class="flex justify-between items-center" style="margin-bottom:12px">
+              <span style="font-size:13px;font-weight:600;color:var(--gray-700)">판촉물 선택</span>
+              <span class="text-sm">클릭하여 선택 (복수 선택 가능)</span>
+            </div>
+            <div class="promo-grid" id="redeem-promo-grid"></div>
+          </div>
+
+          <div style="margin-bottom:16px" id="redeem-custom-items">
+            <div class="flex justify-between items-center" style="margin-bottom:8px">
+              <span style="font-size:13px;font-weight:600;color:var(--gray-700)">직접 입력</span>
+              <button class="btn btn-outline btn-sm" onclick="addRedeemCustomItem()">+ 항목 추가</button>
+            </div>
+            <div id="redeem-custom-list"></div>
+          </div>
+
+          <div class="rx-total" style="margin-bottom:16px">
+            <div>
+              <div class="rx-total-label">차감 총액</div>
+              <div class="text-sm" id="redeem-after-balance">차감 후 잔액: -</div>
+            </div>
+            <div class="rx-total-value" id="redeem-total-display">0원</div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:16px">
+            <label>메모</label>
+            <input type="text" id="redeem-memo" placeholder="예: 2월 판촉물 전달">
+          </div>
+
+          <div class="form-actions">
+            <button class="btn btn-outline" onclick="clearRedeemForm()">초기화</button>
+            <button class="btn btn-danger" onclick="saveRedeem()">💳 마일리지 차감</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">차감 이력</div>
+          <div id="redeem-history-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rx Drugs -->
+    <div id="page-rx-drugs" class="page">
+      <div class="page-header flex justify-between items-center">
+        <div>
+          <h2>처방약품 관리</h2>
+          <p>처방 입력 시 사용되는 약품명과 고정 단가를 관리합니다</p>
+        </div>
+        <button class="btn btn-primary" onclick="openRxDrugModal()">+ 약품 추가</button>
+      </div>
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>약품명</th>
+                <th>보험코드</th>
+                <th class="td-num">단가 (원)</th>
+                <th>분류</th>
+                <th>관리</th>
+              </tr>
+            </thead>
+            <tbody id="rx-drug-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Promo Items -->
+    <div id="page-promo-items" class="page">
+      <div class="page-header flex justify-between items-center">
+        <div>
+          <h2>판촉물 목록</h2>
+          <p>구매 가능한 판촉물 품목 및 가격 관리</p>
+        </div>
+        <button class="btn btn-primary" onclick="openPromoModal()">+ 품목 추가</button>
+      </div>
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>품목명</th>
+                <th class="td-num">가격 (원, 부가세 포함)</th>
+                <th>카테고리</th>
+                <th>관리</th>
+              </tr>
+            </thead>
+            <tbody id="promo-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- History -->
+    <div id="page-history" class="page">
+      <div class="page-header">
+        <h2>이력 조회</h2>
+        <p>전체 적립 및 차감 내역</p>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;align-items:end">
+          <div class="form-group">
+            <label>거래선</label>
+            <select id="hist-clinic-filter">
+              <option value="">전체</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>유형</label>
+            <select id="hist-type-filter">
+              <option value="">전체</option>
+              <option value="earn">적립</option>
+              <option value="spend">차감</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>기간</label>
+            <input type="month" id="hist-month-filter">
+          </div>
+          <button class="btn btn-primary" onclick="renderHistory()">조회</button>
+        </div>
+      </div>
+      <div class="card">
+        <div id="history-list"></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Clinic Modal -->
+<div class="modal-overlay" id="clinic-modal">
+  <div class="modal">
+    <h3 id="clinic-modal-title">거래선 추가</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label>거래선명 *</label>
+        <input type="text" id="cm-name" placeholder="예: 미소진치과">
+      </div>
+      <div class="form-group">
+        <label>담당 지점</label>
+        <input type="text" id="cm-branch" placeholder="예: 은평지점">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>적립률 (%) *</label>
+        <input type="number" id="cm-rate" value="10" min="0" max="100" step="0.1">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeClinicModal()">취소</button>
+      <button class="btn btn-primary" onclick="saveClinic()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirm Modal -->
+<div class="modal-overlay" id="delete-modal">
+  <div class="modal" style="max-width:460px">
+    <h3 style="color:var(--danger)">🗑️ 삭제 확인</h3>
+    <div id="delete-desc" style="font-size:14px;line-height:1.7;background:#fee2e2;border:1px solid #fecaca;border-radius:8px;padding:14px;margin-bottom:16px"></div>
+    <div id="delete-text-wrap" class="form-group" style="margin-bottom:16px;display:none">
+      <label>삭제하려면 거래선명을 똑같이 입력하세요</label>
+      <input type="text" id="delete-text-input" placeholder="" autocomplete="off" oninput="checkDeleteConfirm()">
+    </div>
+    <label id="delete-check-wrap" style="display:none;align-items:center;gap:8px;font-size:14px;cursor:pointer;margin-bottom:16px">
+      <input type="checkbox" id="delete-check" onchange="checkDeleteConfirm()" style="width:18px;height:18px">
+      <span>삭제되는 내용을 확인했습니다</span>
+    </label>
+    <div class="modal-footer" style="margin-top:0">
+      <button class="btn btn-outline" onclick="closeDeleteModal()">취소</button>
+      <button class="btn btn-danger" id="delete-confirm-btn" onclick="executeDelete()" disabled style="opacity:0.4">삭제</button>
+    </div>
+  </div>
+</div>
+
+<!-- Report Modal -->
+<div class="modal-overlay" id="report-modal">
+  <div class="modal" style="max-width:720px">
+    <h3>📊 적립 현황 보고서 (카톡 전송용)</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;margin-bottom:16px;align-items:end">
+      <div class="form-group">
+        <label>거래선</label>
+        <select id="report-clinic" onchange="renderReport()"></select>
+      </div>
+      <div class="form-group">
+        <label>처방 연월</label>
+        <input type="month" id="report-month" onchange="renderReport()">
+      </div>
+      <button class="btn btn-primary" onclick="renderReport()">생성</button>
+    </div>
+    <div style="border:1px solid var(--gray-200);border-radius:8px;overflow:hidden;background:white">
+      <canvas id="report-canvas" style="width:100%;display:block"></canvas>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeReportModal()">닫기</button>
+      <button class="btn btn-outline" onclick="copyReportText()">📝 텍스트 복사</button>
+      <button class="btn btn-accent" onclick="copyReportImage()">📋 이미지 복사</button>
+      <button class="btn btn-primary" onclick="downloadReportImage()">💾 이미지 저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rx Drug Modal -->
+<div class="modal-overlay" id="rx-drug-modal">
+  <div class="modal">
+    <h3 id="rx-drug-modal-title">처방약품 추가</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label>약품명 *</label>
+        <input type="text" id="rdm-name" placeholder="예: 아목크라건정375mg">
+      </div>
+      <div class="form-group">
+        <label>단가 (원) *</label>
+        <input type="number" id="rdm-price" min="0" placeholder="300">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>보험코드 (약제코드)</label>
+        <input type="text" id="rdm-code" placeholder="예: 053500050" inputmode="numeric">
+      </div>
+      <div class="form-group">
+        <label>분류</label>
+        <input type="text" id="rdm-category" placeholder="예: 항생제, 진통제, 소화제">
+      </div>
+    </div>
+    <div class="text-sm" style="margin-bottom:4px;color:var(--gray-500)">💡 보험코드를 등록하면 통계 사진 인식 시 코드로 정확하게 매칭됩니다.</div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeRxDrugModal()">취소</button>
+      <button class="btn btn-primary" onclick="saveRxDrug()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- Promo Modal -->
+<div class="modal-overlay" id="promo-modal">
+  <div class="modal">
+    <h3>판촉물 품목 추가/수정</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label>품목명 *</label>
+        <input type="text" id="pm-name" placeholder="예: 종이컵 (1,000개)">
+      </div>
+      <div class="form-group">
+        <label>가격 (원, 부가세 포함) *</label>
+        <input type="number" id="pm-price" min="0" placeholder="16500">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>카테고리</label>
+      <input type="text" id="pm-category" placeholder="예: 소모품, 치과용품">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closePromoModal()">취소</button>
+      <button class="btn btn-primary" onclick="savePromoItem()">저장</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== DATA STORE =====
+const DB = {
+  get(key, def) { try { return JSON.parse(localStorage.getItem('mileage_' + key)) ?? def; } catch { return def; } },
+  set(key, val) { localStorage.setItem('mileage_' + key, JSON.stringify(val)); },
+};
+
+let clinics = DB.get('clinics', []);
+let rxDrugs = DB.get('rxDrugs', getDefaultRxDrugs());
+migrateBrochureDrugs();
+let promoItems = DB.get('promoItems', getDefaultPromoItems());
+migrateCombinedPromoItems();
+let transactions = DB.get('transactions', []);
+
+function save() {
+  DB.set('clinics', clinics);
+  DB.set('rxDrugs', rxDrugs);
+  DB.set('promoItems', promoItems);
+  DB.set('transactions', transactions);
+}
+
+// 슬래시로 묶여 있던 판촉물을 개별 품목으로 분리 (기존 저장 데이터 1회 마이그레이션)
+function migrateCombinedPromoItems() {
+  const splits = {
+    '뷰센 7/15/28 (10개)': ['뷰센 7 (10개)', '뷰센 15 (10개)', '뷰센 28 (10개)'],
+    '뷰센 C/S/I/G/O (10개)': ['뷰센 C (10개)', '뷰센 S (10개)', '뷰센 I (10개)', '뷰센 G (10개)', '뷰센 O (10개)'],
+    '뷰센 S/C 칫솔 (1:1)': ['뷰센 S + 칫솔 1:1 세트', '뷰센 C + 칫솔 1:1 세트'],
+    '뷰센 G/30 칫솔 (1:1)': ['뷰센 G + 칫솔 1:1 세트', '뷰센 30 + 칫솔 1:1 세트'],
+  };
+  // 이전 마이그레이션에서 잘못 지은 이름 정정
+  const renames = {
+    '뷰센 S 칫솔': '뷰센 S + 칫솔 1:1 세트',
+    '뷰센 C 칫솔': '뷰센 C + 칫솔 1:1 세트',
+    '뷰센 G 칫솔': '뷰센 G + 칫솔 1:1 세트',
+    '뷰센 30 칫솔': '뷰센 30 + 칫솔 1:1 세트',
+  };
+  let changed = false;
+  promoItems.forEach(p => {
+    if (renames[p.name]) { p.name = renames[p.name]; changed = true; }
+  });
+  const result = [];
+  promoItems.forEach(p => {
+    if (splits[p.name]) {
+      splits[p.name].forEach(newName => {
+        if (!promoItems.some(x => x.name === newName)) {
+          result.push({ id: uid(), name: newName, price: p.price, category: p.category });
+        }
+      });
+      changed = true;
+    } else {
+      result.push(p);
+    }
+  });
+  if (changed) {
+    promoItems = result;
+    DB.set('promoItems', promoItems);
+  }
+}
+
+// 오스템 의약품 브로셔 기준 약품 추가 (이미 있는 약품은 건너뜀)
+function migrateBrochureDrugs() {
+  const brochure = [
+    { key: '아목시스', name: '아목시스 캡슐 500mg(아목시실린)', price: 81, category: '항생제' },
+    { key: '아목시클라', name: '아목시클라 정 375mg(아목시실린+클라불란산)', price: 300, category: '항생제' },
+    { key: '세파클리', name: '세파클리 캡슐 250mg(세파클러)', price: 372, category: '항생제' },
+    { key: '록소리펜', name: '록소리펜 정 60mg(록소프로펜)', price: 125, category: '진통소염제' },
+    { key: '나프록소', name: '나프록소 정 275mg(나프록센)', price: 115, category: '진통소염제' },
+    { key: '아세클로페낙', name: '오스템 아세클로페낙 정 100mg', price: 160, category: '진통소염제' },
+    { key: '알마펜', name: '알마펜 정 500mg(알마게이트)', price: 55, category: '소화기관용약' },
+    { key: '모사프리', name: '모사프리 정 5mg(모사프리드)', price: 103, category: '소화기관용약' },
+    { key: '에스오메프라졸', name: '오스템에스오메프라졸 20mg', price: 399, category: '소화기관용약' },
+  ];
+  let changed = false;
+  brochure.forEach(b => {
+    const exist = rxDrugs.find(d => d.name.includes(b.key));
+    if (!exist) {
+      rxDrugs.push({ id: uid(), name: b.name, price: b.price, category: b.category });
+      changed = true;
+    } else if (exist.name === b.key && exist.price === b.price) {
+      // 성분명 없는 짧은 이름(예: '알마펜')은 브로셔 전체 이름으로 갱신 (사진 인식 매칭용)
+      exist.name = b.name;
+      changed = true;
+    }
+  });
+
+  // 통계 사진에서 확인된 오스템 보험코드 자동 등록 (코드 없는 약품만)
+  const knownCodes = [
+    { key: '아목시스', code: '053500080' },
+    { key: '아목시클라', code: '053500060' },
+    { key: '세파클리', code: '053500040' },
+    { key: '록소리펜', code: '053500050' },
+    { key: '나프록소', code: '053500020' },
+    { key: '아세클로페낙', code: '053500180' },
+    { key: '알마펜', code: '053500090' },
+    { key: '모사프리', code: '053500100' },
+    { key: '에스오메프라졸', code: '053500210' },
+    { key: '오스템클로르헥시딘', code: '053500193', nameHas: '15mL' },
+    { key: '오스템클로르헥시딘', code: '053500191' },
+  ];
+  knownCodes.forEach(kc => {
+    const d = rxDrugs.find(x => x.name.includes(kc.key) && !x.code && (!kc.nameHas || x.name.includes(kc.nameHas)));
+    if (d) { d.code = kc.code; changed = true; }
+  });
+
+  if (changed) DB.set('rxDrugs', rxDrugs);
+}
+
+function getDefaultRxDrugs() {
+  return [
+    { id: uid(), name: '아목크라건정375mg(아목시실린-클라불란산칼륨)', price: 300, category: '항생제' },
+    { id: uid(), name: '시원나정(록소프로펜나트륨수화물68.1mg)', price: 125, category: '진통소염제' },
+    { id: uid(), name: '타이레놀8시간이알서방정(아세트아미노펜0.65g)', price: 70, category: '진통소염제' },
+    { id: uid(), name: '에렉신정(에페리손염산염50mg)', price: 115, category: '골격근이완제' },
+    { id: uid(), name: '오스템클로르헥시딘액0.12%(클로르헥시딘글루콘산염액0.6mL)', price: 910, category: '치과구강용약' },
+    { id: uid(), name: '가스탄정(모사프리드시트르산염수화물5.29mg)', price: 103, category: '소화기관용약' },
+    { id: uid(), name: 'CHX 15ml', price: 206, category: '치과구강용약' },
+    { id: uid(), name: '알마펜', price: 55, category: '진통소염제' },
+    { id: uid(), name: '세파클리', price: 372, category: '항생제' },
+  ];
+}
+
+function getDefaultPromoItems() {
+  return [
+    { id: uid(), name: '종이컵 (1,000개)', price: 16500, category: '소모품' },
+    { id: uid(), name: '각티슈 (24개)', price: 42500, category: '소모품' },
+    { id: uid(), name: '아이스팩 (200개/1박스)', price: 115500, category: '소모품' },
+    { id: uid(), name: '위생방수지 (100매)', price: 4900, category: '소모품' },
+    { id: uid(), name: '핸드페이퍼 타월 (5,000매)', price: 37000, category: '소모품' },
+    { id: uid(), name: '뷰센 H (10개)', price: 54000, category: '치과용품' },
+    { id: uid(), name: '뷰센 7 (10개)', price: 54000, category: '치과용품' },
+    { id: uid(), name: '뷰센 15 (10개)', price: 54000, category: '치과용품' },
+    { id: uid(), name: '뷰센 28 (10개)', price: 54000, category: '치과용품' },
+    { id: uid(), name: '뷰센 C (10개)', price: 54000, category: '치과용품' },
+    { id: uid(), name: '뷰센 S (10개)', price: 54000, category: '치과용품' },
+    { id: uid(), name: '뷰센 I (10개)', price: 54000, category: '치과용품' },
+    { id: uid(), name: '뷰센 G (10개)', price: 54000, category: '치과용품' },
+    { id: uid(), name: '뷰센 O (10개)', price: 54000, category: '치과용품' },
+    { id: uid(), name: '뷰센 더블와이드 칫솔 *12EA', price: 24000, category: '치과용품' },
+    { id: uid(), name: '뷰센 S + 칫솔 1:1 세트', price: 7600, category: '치과용품' },
+    { id: uid(), name: '뷰센 C + 칫솔 1:1 세트', price: 7600, category: '치과용품' },
+    { id: uid(), name: '뷰센 G + 칫솔 1:1 세트', price: 7600, category: '치과용품' },
+    { id: uid(), name: '뷰센 30 + 칫솔 1:1 세트', price: 7600, category: '치과용품' },
+    { id: uid(), name: '리도카글액 500ml', price: 15200, category: '약제' },
+    { id: uid(), name: '리도카겔 30G', price: 19400, category: '약제' },
+    { id: uid(), name: '제로미아액 40ML', price: 7000, category: '약제' },
+    { id: uid(), name: 'PDRN(5)', price: 99000, category: '약제' },
+    { id: uid(), name: '오스타민D 덴탈세트', price: 24000, category: '선물세트' },
+    { id: uid(), name: '오스템 패밀리 여행용키트 4개입', price: 13500, category: '선물세트' },
+  ];
+}
+
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
+function fmt(n) { return Math.round(n).toLocaleString('ko-KR') + '원'; }
+function fmtNum(n) { return Math.round(n).toLocaleString('ko-KR'); }
+function today() { return new Date().toISOString().slice(0, 10); }
+function thisMonth() { return new Date().toISOString().slice(0, 7); }
+
+function getClinicBalance(clinicId) {
+  const txs = transactions.filter(t => t.clinicId === clinicId);
+  const earned = txs.filter(t => t.type === 'earn').reduce((s, t) => s + t.amount, 0);
+  const spent = txs.filter(t => t.type === 'spend').reduce((s, t) => s + t.amount, 0);
+  return { earned, spent, balance: earned - spent };
+}
+
+function getClinicTotalRx(clinicId) {
+  return transactions
+    .filter(t => t.clinicId === clinicId && t.type === 'earn')
+    .reduce((s, t) => s + (t.rxTotal || 0), 0);
+}
+
+// ===== 삭제 확인 모달 (2단계 확인) =====
+let pendingDelete = null;
+
+function requestDelete({ desc, requireText, onConfirm }) {
+  pendingDelete = { requireText, onConfirm };
+  document.getElementById('delete-desc').innerHTML = desc;
+
+  const textWrap = document.getElementById('delete-text-wrap');
+  const checkWrap = document.getElementById('delete-check-wrap');
+  const input = document.getElementById('delete-text-input');
+  const check = document.getElementById('delete-check');
+
+  if (requireText) {
+    textWrap.style.display = 'flex';
+    checkWrap.style.display = 'none';
+    input.value = '';
+    input.placeholder = requireText;
+  } else {
+    textWrap.style.display = 'none';
+    checkWrap.style.display = 'flex';
+    check.checked = false;
+  }
+  checkDeleteConfirm();
+  document.getElementById('delete-modal').classList.add('open');
+  if (requireText) setTimeout(() => input.focus(), 100);
+}
+
+function checkDeleteConfirm() {
+  if (!pendingDelete) return;
+  const btn = document.getElementById('delete-confirm-btn');
+  const ok = pendingDelete.requireText
+    ? document.getElementById('delete-text-input').value.trim() === pendingDelete.requireText
+    : document.getElementById('delete-check').checked;
+  btn.disabled = !ok;
+  btn.style.opacity = ok ? '1' : '0.4';
+}
+
+function closeDeleteModal() {
+  pendingDelete = null;
+  document.getElementById('delete-modal').classList.remove('open');
+}
+
+function executeDelete() {
+  if (!pendingDelete) return;
+  const fn = pendingDelete.onConfirm;
+  closeDeleteModal();
+  fn();
+}
+
+// ===== NAVIGATION =====
+function navigate(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  const navItems = document.querySelectorAll('.nav-item');
+  const pageOrder = ['dashboard', 'clinics', 'prescriptions', 'redeem', 'rx-drugs', 'promo-items', 'history'];
+  const idx = pageOrder.indexOf(page);
+  if (idx >= 0) navItems[idx].classList.add('active');
+
+  if (page === 'dashboard') renderDashboard();
+  if (page === 'clinics') renderClinics();
+  if (page === 'prescriptions') { renderRxClinicSelect(); renderRxHistory('all'); }
+  if (page === 'redeem') { renderRedeemClinicSelect(); renderRedeemHistory(); renderRedeemPromoGrid(); }
+  if (page === 'rx-drugs') renderRxDrugs();
+  if (page === 'promo-items') renderPromoItems();
+  if (page === 'history') { renderHistoryFilters(); renderHistory(); }
+}
+
+// ===== DASHBOARD =====
+function renderDashboard() {
+  const d = new Date();
+  document.getElementById('dash-date').textContent = d.toLocaleDateString('ko-KR', { year:'numeric', month:'long', day:'numeric', weekday:'long' });
+
+  const totalBalance = clinics.reduce((s, c) => s + getClinicBalance(c.id).balance, 0);
+  const totalEarned = transactions.filter(t => t.type === 'earn').reduce((s, t) => s + t.amount, 0);
+  const totalSpent = transactions.filter(t => t.type === 'spend').reduce((s, t) => s + t.amount, 0);
+  const thisMonthEarned = transactions.filter(t => t.type === 'earn' && t.date?.startsWith(thisMonth())).reduce((s, t) => s + t.amount, 0);
+
+  document.getElementById('dash-stats').innerHTML = `
+    <div class="stat-card"><div class="stat-label">거래선 수</div><div class="stat-value">${clinics.length}</div><div class="stat-sub">등록된 치과</div></div>
+    <div class="stat-card"><div class="stat-label">총 마일리지 잔액</div><div class="stat-value" style="font-size:20px">${fmt(totalBalance)}</div><div class="stat-sub">전체 거래선 합계</div></div>
+    <div class="stat-card"><div class="stat-label">이번달 적립액</div><div class="stat-value" style="font-size:20px;color:var(--primary)">${fmt(thisMonthEarned)}</div><div class="stat-sub">${thisMonth()} 기준</div></div>
+    <div class="stat-card"><div class="stat-label">총 차감액</div><div class="stat-value" style="font-size:20px;color:var(--danger)">${fmt(totalSpent)}</div><div class="stat-sub">누적 판촉물</div></div>
+  `;
+
+  const sorted = [...clinics].sort((a, b) => getClinicBalance(b.id).balance - getClinicBalance(a.id).balance).slice(0, 10);
+  const maxBal = Math.max(...sorted.map(c => getClinicBalance(c.id).balance), 1);
+  document.getElementById('dash-top-clinics').innerHTML = sorted.length ? sorted.map(c => {
+    const { balance } = getClinicBalance(c.id);
+    const pct = Math.max(0, (balance / maxBal) * 100);
+    return `<div style="margin-bottom:12px">
+      <div class="flex justify-between" style="margin-bottom:4px">
+        <span style="font-size:13px;font-weight:500">${c.name}</span>
+        <span style="font-size:13px;font-weight:700;color:var(--primary)">${fmt(balance)}</span>
+      </div>
+      <div class="mileage-bar"><div class="mileage-fill" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join('') : '<div class="empty"><div class="empty-icon">🏥</div><p>거래선을 추가하세요</p></div>';
+
+  const recent = [...transactions].sort((a, b) => b.createdAt - a.createdAt).slice(0, 8);
+  document.getElementById('dash-recent').innerHTML = recent.length ? recent.map(t => {
+    const clinic = clinics.find(c => c.id === t.clinicId);
+    const isEarn = t.type === 'earn';
+    return `<div class="history-item">
+      <div class="history-icon ${isEarn ? 'earn' : 'spend'}">${isEarn ? '📋' : '🎁'}</div>
+      <div class="history-info">
+        <div class="history-clinic">${clinic?.name || '-'}</div>
+        <div class="history-desc">${isEarn
+          ? (t.memo || `${txPeriod(t)} 처방 적립`)
+          : ((t.items || []).map(i => `${i.name} × ${fmtNum(i.qty || 1)}개`).join(', ') || t.memo || '판촉물 차감')}</div>
+        <div class="history-date">${t.date || ''}</div>
+      </div>
+      <div>
+        <div class="history-amount ${isEarn ? 'earn' : 'spend'}">${isEarn ? '+' : '-'}${fmt(t.amount)}</div>
+      </div>
+    </div>`;
+  }).join('') : '<div class="empty"><div class="empty-icon">📊</div><p>이력이 없습니다</p></div>';
+}
+
+// ===== CLINICS =====
+let editingClinicId = null;
+
+function renderClinics(filter = '', sort = '') {
+  let list = [...clinics];
+  if (filter) list = list.filter(c => c.name.includes(filter) || (c.branch || '').includes(filter));
+  const sortVal = sort || document.getElementById('clinic-filter-sort')?.value || 'name';
+  if (sortVal === 'name') list.sort((a, b) => a.name.localeCompare(b.name));
+  if (sortVal === 'balance-desc') list.sort((a, b) => getClinicBalance(b.id).balance - getClinicBalance(a.id).balance);
+  if (sortVal === 'balance-asc') list.sort((a, b) => getClinicBalance(a.id).balance - getClinicBalance(b.id).balance);
+
+  const tbody = document.getElementById('clinic-table-body');
+  tbody.innerHTML = list.length ? list.map(c => {
+    const { earned, spent, balance } = getClinicBalance(c.id);
+    const totalRx = getClinicTotalRx(c.id);
+    const balColor = balance < 0 ? 'var(--danger)' : 'var(--primary)';
+    return `<tr>
+      <td><strong>${c.name}</strong>${c.branch ? ` <span class="text-sm">(${c.branch})</span>` : ''}</td>
+      <td><span class="badge badge-green">${c.rate}%</span></td>
+      <td class="td-num">${fmtNum(totalRx)}</td>
+      <td class="td-num" style="color:var(--primary)">${fmtNum(earned)}</td>
+      <td class="td-num" style="color:var(--danger)">${fmtNum(spent)}</td>
+      <td class="td-num"><strong style="color:${balColor}">${fmtNum(balance)}</strong></td>
+      <td>
+        <button class="btn btn-sm" style="background:var(--primary-light);color:var(--primary-dark);font-weight:600" onclick="openReportModal('${c.id}')">📊 보고서</button>
+        <button class="btn btn-outline btn-sm" style="margin-left:4px" onclick="editClinic('${c.id}')">수정</button>
+        <button class="btn btn-outline btn-sm" style="margin-left:4px;color:var(--danger)" onclick="deleteClinic('${c.id}')">삭제</button>
+      </td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="7"><div class="empty"><div class="empty-icon">🏥</div><p>등록된 거래선이 없습니다</p></div></td></tr>`;
+}
+
+function filterClinics(val) { renderClinics(val); }
+
+function openClinicModal(id = null) {
+  editingClinicId = id;
+  document.getElementById('clinic-modal-title').textContent = id ? '거래선 수정' : '거래선 추가';
+  if (id) {
+    const c = clinics.find(x => x.id === id);
+    document.getElementById('cm-name').value = c.name;
+    document.getElementById('cm-branch').value = c.branch || '';
+    document.getElementById('cm-rate').value = c.rate;
+  } else {
+    ['cm-name','cm-branch'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('cm-rate').value = 10;
+  }
+  document.getElementById('clinic-modal').classList.add('open');
+}
+
+function closeClinicModal() { document.getElementById('clinic-modal').classList.remove('open'); }
+
+let clinicModalFromRx = false;
+
+function openClinicModalFromRx() {
+  clinicModalFromRx = true;
+  openClinicModal();
+}
+
+function saveClinic() {
+  const name = document.getElementById('cm-name').value.trim();
+  const rate = parseFloat(document.getElementById('cm-rate').value);
+  if (!name) return alert('거래선명을 입력하세요.');
+  if (isNaN(rate)) return alert('적립률을 입력하세요.');
+
+  let savedId = editingClinicId;
+  const branch = document.getElementById('cm-branch').value.trim();
+  if (editingClinicId) {
+    const c = clinics.find(x => x.id === editingClinicId);
+    Object.assign(c, { name, branch, rate });
+  } else {
+    savedId = uid();
+    clinics.push({ id: savedId, name, branch, rate });
+  }
+  save();
+  closeClinicModal();
+  renderClinics();
+
+  // 처방 입력 화면에서 신규 등록한 경우: 셀렉트 갱신 후 바로 선택
+  if (clinicModalFromRx) {
+    clinicModalFromRx = false;
+    renderRxClinicSelect();
+    document.getElementById('rx-clinic').value = savedId;
+    updateRxRate();
+  }
+}
+
+function editClinic(id) { openClinicModal(id); }
+
+function deleteClinic(id) {
+  const c = clinics.find(x => x.id === id);
+  const { balance } = getClinicBalance(id);
+  const txCount = transactions.filter(t => t.clinicId === id).length;
+  requestDelete({
+    desc: `<strong>"${c.name}"</strong> 거래선을 삭제합니다.<br>
+      · 적립/차감 이력 <strong>${txCount}건</strong>이 함께 삭제됩니다<br>
+      · 현재 잔액: <strong>${fmt(balance)}</strong><br>
+      · <span style="color:var(--danger);font-weight:700">삭제 후 복구할 수 없습니다</span>`,
+    requireText: c.name,
+    onConfirm: () => {
+      clinics = clinics.filter(x => x.id !== id);
+      transactions = transactions.filter(t => t.clinicId !== id);
+      save();
+      renderClinics();
+    }
+  });
+}
+
+// ===== PRESCRIPTION =====
+let rxItems = [];
+
+function setDefaultRxPeriod() {
+  // 기본값: 이번달 1일 ~ 말일
+  const [y, m] = thisMonth().split('-').map(Number);
+  document.getElementById('rx-start').value = `${thisMonth()}-01`;
+  document.getElementById('rx-end').value = `${thisMonth()}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
+}
+
+function autoSetRxEnd() {
+  // 시작일 변경 시 종료일 자동 제안: 시작일 + 1개월 - 1일 (예: 5/15 → 6/14, 1일 시작은 그 달 말일)
+  const startVal = document.getElementById('rx-start').value;
+  if (!startVal) return;
+  const [y, m, day] = startVal.split('-').map(Number);
+  let end = day === 1
+    ? new Date(y, m, 0)              // 그 달 말일
+    : new Date(y, m, day - 1);       // 다음달 (시작일-1)일
+  // 다음달에 없는 날짜(예: 1/31 → 2/30)는 다음달 말일로 보정
+  if (day !== 1 && end.getMonth() !== (m % 12)) end = new Date(y, m + 1, 0);
+  const pad = n => String(n).padStart(2, '0');
+  document.getElementById('rx-end').value = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}`;
+}
+
+function renderRxClinicSelect() {
+  const sel = document.getElementById('rx-clinic');
+  sel.innerHTML = '<option value="">거래선을 선택하세요</option>' +
+    [...clinics].sort((a, b) => a.name.localeCompare(b.name)).map(c => `<option value="${c.id}" data-rate="${c.rate}">${c.name}</option>`).join('');
+  if (!document.getElementById('rx-start').value) setDefaultRxPeriod();
+  if (!rxItems.length) { rxItems = []; addRxItem(); addRxItem(); addRxItem(); }
+  renderRxItemRows();
+}
+
+function updateRxRate() {
+  const sel = document.getElementById('rx-clinic');
+  const opt = sel.options[sel.selectedIndex];
+  if (opt && opt.dataset.rate) document.getElementById('rx-rate').value = opt.dataset.rate;
+  calcRxTotal();
+}
+
+function addRxItem() {
+  rxItems.push({ id: uid(), drugId: '', name: '', qty: '', price: '' });
+  renderRxItemRows();
+}
+
+function removeRxItem(id) {
+  rxItems = rxItems.filter(r => r.id !== id);
+  renderRxItemRows();
+}
+
+function renderRxItemRows() {
+  const drugOptions = rxDrugs
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(d => `<option value="${d.id}" data-price="${d.price}">${d.name} (${fmtNum(d.price)}원)</option>`)
+    .join('');
+
+  document.getElementById('rx-items-list').innerHTML = rxItems.map(item => {
+    const amt = item.qty && item.price ? fmtNum(parseFloat(item.qty) * parseFloat(item.price)) : '';
+    const isCustom = item.drugId === '__custom__';
+    const nameHint = (!isCustom && item.name) ? `<div style="font-size:11px;color:var(--gray-500);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${item.name}</div>` : '';
+    return `<div class="rx-item-row" id="rxrow-${item.id}">
+      <div>
+        <select onchange="selectRxDrug('${item.id}', this)" style="padding:6px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;width:100%;outline:none">
+          <option value="">-- 약품 선택 --</option>
+          ${drugOptions}
+          <option value="__custom__" ${isCustom ? 'selected' : ''}>✏️ 직접 입력</option>
+        </select>
+        ${isCustom ? `<input type="text" placeholder="약품명 직접 입력" value="${item.name}" oninput="updateRxItem('${item.id}','name',this.value)" style="margin-top:4px;padding:5px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:12px;width:100%;outline:none">` : nameHint}
+      </div>
+      <input type="number" placeholder="처방량" value="${item.qty}" min="0" oninput="updateRxItem('${item.id}','qty',this.value)" style="padding:6px 8px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;width:100%;text-align:right">
+      <input type="number" placeholder="단가" value="${item.price}" min="0"
+        ${isCustom ? `oninput="updateRxItem('${item.id}','price',this.value)"` : 'readonly'}
+        style="padding:6px 8px;border:1px solid ${isCustom ? 'var(--gray-300)' : 'var(--gray-200)'};border-radius:6px;font-size:13px;width:100%;text-align:right;${!isCustom ? 'background:var(--primary-light);font-weight:700;color:var(--primary-dark);cursor:default' : ''}">
+      <input type="text" readonly placeholder="0" value="${amt}" style="padding:6px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;width:100%;background:var(--gray-50);text-align:right;font-weight:600">
+      <button style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--gray-400)" onclick="removeRxItem('${item.id}')">✕</button>
+    </div>`;
+  }).join('');
+
+  // set correct selected option
+  rxItems.forEach(item => {
+    if (!item.drugId || item.drugId === '__custom__') return;
+    const row = document.getElementById('rxrow-' + item.id);
+    if (!row) return;
+    const sel = row.querySelector('select');
+    if (sel) sel.value = item.drugId;
+  });
+
+  calcRxTotal();
+}
+
+function selectRxDrug(itemId, selectEl) {
+  const item = rxItems.find(r => r.id === itemId);
+  if (!item) return;
+  const val = selectEl.value;
+  if (val === '__custom__') {
+    item.drugId = '__custom__'; item.name = ''; item.price = '';
+  } else if (val) {
+    const drug = rxDrugs.find(d => d.id === val);
+    if (drug) { item.drugId = drug.id; item.name = drug.name; item.price = String(drug.price); }
+  } else {
+    item.drugId = ''; item.name = ''; item.price = '';
+  }
+  renderRxItemRows();
+}
+
+function updateRxItem(id, field, val) {
+  const item = rxItems.find(r => r.id === id);
+  if (item) { item[field] = val; calcRxTotal(); }
+}
+
+// ===== 통계 사진 인식 (OCR) — 여러 장 지원 =====
+let statsPhotos = [];
+
+function addStatsPhotos(files) {
+  [...files].forEach(f => {
+    if (f && f.type.startsWith('image/')) statsPhotos.push(f);
+  });
+  renderStatsPhotos();
+}
+
+function removeStatsPhoto(idx) {
+  statsPhotos.splice(idx, 1);
+  renderStatsPhotos();
+}
+
+function renderStatsPhotos() {
+  const wrap = document.getElementById('stats-photo-preview-wrap');
+  if (!statsPhotos.length) {
+    wrap.style.display = 'none';
+    wrap.innerHTML = '';
+    document.getElementById('ocr-run-btn').disabled = true;
+    return;
+  }
+  wrap.style.display = 'flex';
+  wrap.innerHTML = statsPhotos.map((f, i) => `
+    <div style="position:relative">
+      <img src="${URL.createObjectURL(f)}" style="height:120px;border:1px solid #bfdbfe;border-radius:8px;cursor:zoom-in"
+        onclick="this.style.height = this.style.height === '120px' ? 'auto' : '120px'; this.style.maxWidth='100%'">
+      <button onclick="removeStatsPhoto(${i})" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:none;background:var(--danger);color:white;font-size:12px;cursor:pointer;line-height:1">✕</button>
+      <div style="position:absolute;bottom:4px;left:4px;background:rgba(0,0,0,0.55);color:white;font-size:11px;padding:1px 6px;border-radius:4px">${i + 1}쪽</div>
+    </div>
+  `).join('');
+  document.getElementById('ocr-run-btn').disabled = false;
+  document.getElementById('ocr-status').innerHTML = `<span style="color:#1e40af">사진 ${statsPhotos.length}장 준비됨. "인식 실행"을 누르세요.</span>`;
+}
+
+// 캡처 후 붙여넣기 지원 (처방 입력 화면에서만)
+window.addEventListener('paste', e => {
+  if (!document.getElementById('page-prescriptions').classList.contains('active')) return;
+  const items = e.clipboardData?.items || [];
+  const imgs = [...items].filter(it => it.type.startsWith('image/')).map(it => it.getAsFile());
+  if (imgs.length) {
+    addStatsPhotos(imgs);
+    e.preventDefault();
+  }
+});
+
+function loadTesseract() {
+  if (window.Tesseract) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('offline'));
+    document.head.appendChild(s);
+  });
+}
+
+async function runStatsOcr() {
+  if (!statsPhotos.length) return alert('먼저 사진을 선택하거나 붙여넣어 주세요.');
+  const status = document.getElementById('ocr-status');
+  const btn = document.getElementById('ocr-run-btn');
+  btn.disabled = true;
+  status.innerHTML = '<span style="color:#1e40af">⏳ 인식 엔진 로딩 중... (최초 1회는 다운로드로 시간이 걸립니다)</span>';
+
+  try {
+    await loadTesseract();
+    let curPage = 1;
+    const worker = await Tesseract.createWorker('kor+eng', 1, {
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          status.innerHTML = `<span style="color:#1e40af">⏳ 사진 인식 중... (${curPage}/${statsPhotos.length}쪽) ${Math.round(m.progress * 100)}%</span>`;
+        }
+      }
+    });
+    // 여러 장을 차례로 인식해 텍스트 합치기
+    let fullText = '';
+    for (let i = 0; i < statsPhotos.length; i++) {
+      curPage = i + 1;
+      const { data } = await worker.recognize(statsPhotos[i]);
+      fullText += data.text + '\n';
+    }
+    await worker.terminate();
+    applyOcrResult(fullText);
+  } catch (err) {
+    status.innerHTML = '<span style="color:var(--danger)">⚠️ 인식에 실패했습니다 (인터넷 연결 필요). 위 사진을 보면서 직접 입력해 주세요.</span>';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// 통계 제목에서 처방 연월 추출 → 처방 기간 자동 설정
+function parseStatsDate(text) {
+  // 패턴 1: 'M월 D일 ~ M월 D일' 명시 기간 (연도는 'YYYY년'에서)
+  const yearM = text.match(/(20\d{2})\s*년/);
+  const year = yearM ? Number(yearM[1]) : null;
+  const rangeM = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*[~\-]\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+  const pad = n => String(n).padStart(2, '0');
+  if (rangeM && year) {
+    const [, m1, d1, m2, d2] = rangeM.map(Number);
+    const y2 = m2 < m1 ? year + 1 : year; // 12월~1월 걸치는 경우
+    return { start: `${year}-${pad(m1)}-${pad(d1)}`, end: `${y2}-${pad(m2)}-${pad(d2)}` };
+  }
+  // 패턴 2: 'YYYY년 MM월' → 그 달 1일~말일
+  const monthM = text.match(/(20\d{2})\s*년\s*(\d{1,2})\s*월/);
+  if (monthM) {
+    const y = Number(monthM[1]), m = Number(monthM[2]);
+    return { start: `${y}-${pad(m)}-01`, end: `${y}-${pad(m)}-${pad(new Date(y, m, 0).getDate())}` };
+  }
+  return null;
+}
+
+function applyOcrResult(text) {
+  const status = document.getElementById('ocr-status');
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const found = [];
+
+  // 통계 연월 인식 → 처방 기간 자동 설정
+  const period = parseStatsDate(text);
+  if (period) {
+    document.getElementById('rx-start').value = period.start;
+    document.getElementById('rx-end').value = period.end;
+  }
+
+  // 1단계: 모든 (약품, 줄) 매칭 후보를 점수와 함께 수집
+  const matches = [];
+  rxDrugs.forEach(drug => {
+    // 매칭 키워드: ① 괄호/용량 앞 제품명(baseKeys), ② 괄호 안 성분명들(ingKeys)
+    // 예: '록소리펜 정 60mg(록소프로펜)' → base ['록소리펜정'], ing ['록소프로펜']
+    const baseKeys = [];
+    const ingKeys = [];
+    const base = normalizeText(drug.name.split('(')[0].replace(/\d+\s*(mg|밀리그램|ml|g|%).*/i, ''));
+    if (base.length >= 2) baseKeys.push(base);
+    const parenMatches = drug.name.match(/\(([^)]+)\)/g) || [];
+    parenMatches.forEach(p => {
+      p.slice(1, -1).split(/[+\-·,/]/).forEach(ing => {
+        const k = normalizeText(ing.replace(/\d+\s*(mg|밀리그램|ml|g|%).*/i, ''));
+        if (k.length >= 3) ingKeys.push(k);
+      });
+    });
+    // 용량 표기(15ml 등)는 별도 키로 — 같은 약 다른 용량 제품 구분에 강한 신호
+    const mlKeys = (drug.name.match(/\d+(\.\d+)?\s*m[lL]/g) || [])
+      .map(t => normalizeText(t)).filter(k => k.length >= 3);
+    // 긴 이름은 앞 4글자 축약 키도 허용 (EMR 화면에서 품명이 잘리는 경우)
+    if (base.length > 5) baseKeys.push(base.slice(0, 4));
+    if (!baseKeys.length && !ingKeys.length && !mlKeys.length) return;
+
+    const codeKey = (drug.code || '').replace(/\D/g, '');
+
+    lines.forEach((line, lineIdx) => {
+      // 제목/합계 줄은 제외
+      if (/상세내역|처방 내역|통계|합계|검색기간|작성일/.test(line)) return;
+      const normLine = normalizeText(line);
+      const hitCode = codeKey.length >= 6 && line.replace(/[\s,]/g, '').includes(codeKey);
+      const hitBase = baseKeys.filter(k => normLine.includes(k));
+      const hitIng = ingKeys.filter(k => normLine.includes(k));
+      const hitMl = mlKeys.filter(k => normLine.includes(k));
+      // 매칭 인정 조건: 보험코드 일치 또는 제품명(축약 포함) 일치 또는 용량 일치.
+      // 성분명만 일치하는 행은 같은 성분의 타사 제품일 수 있으므로 인정하지 않음
+      // (예: 알마겔정(알마게이트)은 알마펜과 성분·단가가 같아도 다른 회사 제품)
+      if (!hitCode && !hitBase.length && !hitMl.length) return;
+
+      const lineNums = (line.replace(/,/g, '').match(/\d+/g) || []).map(Number);
+      // 점수: 코드 일치(확정) > 제품명 + 성분 + 용량 + 단가 + 데이터 행 보너스
+      let score = [...hitBase, ...hitIng].reduce((s, k) => s + k.length, 0);
+      if (hitCode) score += 100;
+      score += hitMl.length * 10;
+      if (lineNums.includes(drug.price)) score += 15;
+      if (lineNums.length >= 4) score += 25;
+      matches.push({ drug, lineIdx, line, score });
+    });
+  });
+
+  // 2단계: 한 줄당 최고 점수 약품 하나만, 약품당 한 줄만 배정
+  matches.sort((a, b) => b.score - a.score);
+  const usedLines = new Set(), usedDrugs = new Set();
+  matches.forEach(m => {
+    if (usedLines.has(m.lineIdx) || usedDrugs.has(m.drug.id)) return;
+    usedLines.add(m.lineIdx);
+    usedDrugs.add(m.drug.id);
+
+    // 수량 추출: 보험코드(7자리 이상)·퍼센트 제거 후 마지막 숫자 = 총 처방량
+    const cleaned = m.line.replace(/,/g, '')
+      .replace(/\d{7,}/g, ' ')
+      .replace(/\d+(\.\d+)?\s*%/g, ' ');
+    const nums = (cleaned.match(/\d+(\.\d+)?/g) || []).map(Number);
+    let qty = '';
+    const candidates = nums.filter(n => n !== m.drug.price && n > 0 && n < 100000 && Number.isInteger(n));
+    if (candidates.length) qty = candidates[candidates.length - 1];
+    found.push({ drug: m.drug, qty });
+  });
+
+  const periodMsg = period ? `<span style="color:#1e40af">📅 처방 기간 자동 설정: ${fmtPeriod(period.start, period.end)}</span><br>` : '';
+
+  if (!found.length) {
+    status.innerHTML = periodMsg + '<span style="color:var(--danger)">⚠️ 등록된 약품을 찾지 못했습니다. 사진을 보면서 직접 입력해 주세요.</span>';
+    return;
+  }
+
+  // 빈 행 제거 후 인식된 품목 채우기
+  rxItems = rxItems.filter(r => r.name || r.qty);
+  found.forEach(({ drug, qty }) => {
+    // 이미 같은 약품이 있으면 수량만 갱신
+    const exist = rxItems.find(r => r.drugId === drug.id);
+    if (exist) { if (qty) exist.qty = String(qty); return; }
+    rxItems.push({ id: uid(), drugId: drug.id, name: drug.name, qty: qty ? String(qty) : '', price: String(drug.price) });
+  });
+  renderRxItemRows();
+
+  status.innerHTML = periodMsg + `<span style="color:var(--primary-dark)">✅ ${found.length}개 품목 인식: ` +
+    found.map(f => `${f.drug.name.split('(')[0]}${f.qty ? ' × ' + fmtNum(f.qty) : ' (수량 확인 필요)'}`).join(', ') +
+    '</span><br><span style="color:#b45309">⚠️ 수량이 정확한지 사진과 대조해 확인 후 저장하세요.</span>';
+}
+
+function calcRxTotal() {
+  let total = 0;
+  rxItems.forEach(item => {
+    const q = parseFloat(item.qty) || 0;
+    const p = parseFloat(item.price) || 0;
+    total += q * p;
+  });
+  const rate = parseFloat(document.getElementById('rx-rate').value) || 0;
+  const mileage = total * rate / 100;
+  document.getElementById('rx-total-display').textContent = fmt(total);
+  document.getElementById('rx-mileage-preview').textContent = `마일리지 적립: ${fmt(mileage)}`;
+}
+
+function clearRxForm() {
+  document.getElementById('rx-clinic').value = '';
+  setDefaultRxPeriod();
+  document.getElementById('rx-rate').value = 10;
+  document.getElementById('rx-memo').value = '';
+  rxItems = [];
+  addRxItem(); addRxItem(); addRxItem();
+  renderRxItemRows();
+}
+
+// 적립 이력의 기간 문자열 (구버전 데이터는 연월만 표시)
+function txPeriod(t) {
+  return t.rxStart && t.rxEnd ? fmtPeriod(t.rxStart, t.rxEnd) : (t.rxMonth || '');
+}
+
+// 기간 표시용: '2026-05-15' ~ '2026-06-14' → '26.05.15~06.14'
+function fmtPeriod(start, end) {
+  if (!start || !end) return '';
+  const s = start.slice(2).replace(/-/g, '.');
+  const e = end.slice(0, 4) === start.slice(0, 4) ? end.slice(5).replace(/-/g, '.') : end.slice(2).replace(/-/g, '.');
+  return `${s}~${e}`;
+}
+
+function saveRx() {
+  const clinicId = document.getElementById('rx-clinic').value;
+  const rxStart = document.getElementById('rx-start').value;
+  const rxEnd = document.getElementById('rx-end').value;
+  const rate = parseFloat(document.getElementById('rx-rate').value);
+  const memo = document.getElementById('rx-memo').value;
+
+  if (!clinicId) return alert('거래선을 선택하세요.');
+  if (!rxStart || !rxEnd) return alert('처방 기간을 입력하세요.');
+  if (rxEnd < rxStart) return alert('종료일이 시작일보다 빠릅니다.');
+
+  const items = rxItems.filter(r => r.name && r.qty && r.price);
+  if (!items.length) return alert('처방 품목을 최소 1개 입력하세요.');
+
+  const rxTotal = items.reduce((s, r) => s + (parseFloat(r.qty) * parseFloat(r.price)), 0);
+  const mileage = Math.round(rxTotal * rate / 100);
+
+  if (!confirm(`처방 기간: ${fmtPeriod(rxStart, rxEnd)}\n처방액 합계: ${fmt(rxTotal)}\n적립 마일리지: ${fmt(mileage)}\n\n저장하시겠습니까?`)) return;
+
+  transactions.push({
+    id: uid(), clinicId, type: 'earn', amount: mileage,
+    rxTotal, rate, rxMonth: rxStart.slice(0, 7), rxStart, rxEnd,
+    items: items.map(r => ({ ...r })),
+    date: today(), memo, createdAt: Date.now()
+  });
+  save();
+  clearRxForm();
+  renderRxHistory('all');
+  alert('✅ 마일리지가 적립되었습니다!');
+}
+
+let rxHistTab = 'all';
+function switchRxTab(tab, el) {
+  rxHistTab = tab;
+  document.querySelectorAll('#page-prescriptions .tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderRxHistory(tab);
+}
+
+function renderRxHistory(tab) {
+  let txs = transactions.filter(t => t.type === 'earn');
+  if (tab === 'month') txs = txs.filter(t => t.date?.startsWith(thisMonth()));
+  txs = [...txs].sort((a, b) => b.createdAt - a.createdAt);
+
+  document.getElementById('rx-history-list').innerHTML = txs.length ? txs.map(t => {
+    const c = clinics.find(x => x.id === t.clinicId);
+    return `<div class="history-item">
+      <div class="history-icon earn">📋</div>
+      <div class="history-info">
+        <div class="history-clinic">${c?.name || '-'}</div>
+        <div class="history-desc">${txPeriod(t)} 처방 | 처방액 ${fmt(t.rxTotal || 0)} | 적립률 ${t.rate}%</div>
+        <div class="history-date">${t.date || ''} ${t.memo ? '| ' + t.memo : ''}</div>
+      </div>
+      <div class="history-amount earn">+${fmt(t.amount)}</div>
+    </div>`;
+  }).join('') : '<div class="empty"><div class="empty-icon">📋</div><p>처방 이력이 없습니다</p></div>';
+}
+
+// ===== REDEEM =====
+let selectedPromoItems = {};
+let customRedeemItems = [];
+
+function renderRedeemClinicSelect() {
+  const sel = document.getElementById('redeem-clinic');
+  sel.innerHTML = '<option value="">거래선을 선택하세요</option>' +
+    [...clinics].sort((a, b) => a.name.localeCompare(b.name)).map(c => {
+      const { balance } = getClinicBalance(c.id);
+      return `<option value="${c.id}">${c.name} (잔액: ${fmt(balance)})</option>`;
+    }).join('');
+  document.getElementById('redeem-date').value = today();
+}
+
+function updateRedeemBalance() {
+  const clinicId = document.getElementById('redeem-clinic').value;
+  const info = document.getElementById('redeem-balance-info');
+  if (!clinicId) { info.style.display = 'none'; return; }
+  const c = clinics.find(x => x.id === clinicId);
+  const { balance } = getClinicBalance(clinicId);
+  info.style.display = 'block';
+  document.getElementById('redeem-clinic-name').textContent = c.name;
+  const balEl = document.getElementById('redeem-balance-display');
+  balEl.textContent = fmt(balance);
+  balEl.style.color = balance < 0 ? 'var(--danger)' : 'inherit';
+  calcRedeemTotal();
+}
+
+function renderRedeemPromoGrid() {
+  document.getElementById('redeem-promo-grid').innerHTML = promoItems.map(p => `
+    <div class="promo-card ${selectedPromoItems[p.id] ? 'selected' : ''}" onclick="togglePromoItem('${p.id}')">
+      <div class="promo-name">${p.name}</div>
+      <div class="promo-price">${fmt(p.price)}</div>
+      ${selectedPromoItems[p.id] ? `<div class="text-sm" style="margin-top:4px">수량: <input type="number" min="1" value="${selectedPromoItems[p.id]}" onclick="event.stopPropagation()" oninput="setPromoQty('${p.id}', this.value)" style="width:50px;border:1px solid var(--gray-300);border-radius:4px;padding:2px 4px;font-size:12px"></div>` : ''}
+    </div>
+  `).join('');
+}
+
+// ===== 카톡 주문 자동 인식 =====
+function normalizeText(s) {
+  return s.toLowerCase().replace(/[\s\(\)\[\]\*\+\/:,.~!?-]/g, '');
+}
+
+function parseKakaoOrder() {
+  const raw = document.getElementById('kakao-order-text').value.trim();
+  const resultEl = document.getElementById('kakao-parse-result');
+  if (!raw) { resultEl.innerHTML = '<span style="color:var(--danger)">주문 내용을 붙여넣어 주세요.</span>'; return; }
+
+  // 한국어 수사 → 숫자 변환을 전체 텍스트에 먼저 적용
+  let pre = raw
+    .replace(/(하나|한\s*개|한\s*박스|한\s*세트|한\s*통)(만요|만|요)?/g, (s) => s.includes('박스') ? '1박스' : s.includes('세트') ? '1세트' : s.includes('통') ? '1통' : '1개')
+    .replace(/(둘|두\s*개|두\s*박스|두\s*세트)(만요|만|요)?/g, (s) => s.includes('박스') ? '2박스' : s.includes('세트') ? '2세트' : '2개')
+    .replace(/(셋|세\s*개|세\s*박스|세\s*세트)(만요|만|요)?/g, (s) => s.includes('박스') ? '3박스' : s.includes('세트') ? '3세트' : '3개')
+    .replace(/(넷|네\s*개|네\s*박스)(만요|만|요)?/g, (s) => s.includes('박스') ? '4박스' : '4개')
+    .replace(/다섯\s*(개|박스|세트)?/g, '5개').replace(/여섯\s*(개|박스|세트)?/g, '6개')
+    .replace(/일곱\s*(개|박스|세트)?/g, '7개').replace(/여덟\s*(개|박스|세트)?/g, '8개')
+    .replace(/아홉\s*(개|박스|세트)?/g, '9개').replace(/열\s*개/g, '10개');
+
+  // 줄바꿈·쉼표로 분리 후, "숫자+단위" 뒤에 이어지는 품목도 추가 분리 (예: "타월 2개랑 각티슈 1개")
+  const segments = pre.split(/[\n,،·]+/)
+    .flatMap(s => s.split(/(?<=\d\s?(?:개|박스|통|병|ea|EA))(?:랑|이랑|하고|및|과|와)?\s+/))
+    .map(s => s.trim()).filter(Boolean);
+  const matched = [];
+  const failed = [];
+
+  segments.forEach(seg => {
+    // 인사말·맺음말 제거 (문장 어디에 있어도)
+    let cleaned = seg
+      .replace(/안녕하세요|안녕하십니까|수고하세요|수고하십니다|감사합니다|감사해요|고맙습니다/g, '')
+      .replace(/부탁드려요|부탁드립니다|부탁해요|부탁드릴게요|주세요|보내주세요|보내주시겠어요|요청합니다|요청드립니다|발송해주세요|배송해주세요/g, '')
+      .replace(/[~^!?。]+/g, ' ')
+      .trim();
+    if (!cleaned) return;
+
+    // 마지막 숫자(+단위)를 수량으로 인식, 뒤에 붙은 조사(랑/이랑/하고/도/만/요)까지 제거
+    let qty = 1;
+    let nameText = cleaned;
+    const qtyRe = /(\d+)\s*(개|박스|세트|통|장|매|병|ea|EA)?\s*(랑|이랑|하고|및|도|만|요)?\s*/g;
+    let m, lastMatch = null, lastUnitMatch = null;
+    while ((m = qtyRe.exec(cleaned)) !== null) {
+      lastMatch = m;
+      if (m[2]) lastUnitMatch = m; // 단위(개/박스 등)가 붙은 숫자 우선
+    }
+    // 단위 있는 숫자가 있으면 그걸 수량으로, 없으면 문장 끝의 숫자만 수량으로 인정
+    if (lastUnitMatch) lastMatch = lastUnitMatch;
+    else if (lastMatch && lastMatch.index + lastMatch[0].length < cleaned.length) lastMatch = null;
+    if (lastMatch) {
+      qty = parseInt(lastMatch[1]);
+      nameText = (cleaned.slice(0, lastMatch.index) + ' ' + cleaned.slice(lastMatch.index + lastMatch[0].length)).trim();
+    }
+    // 남은 조사 제거
+    nameText = nameText.replace(/(이랑|랑|하고|및|도|만)\s*$/g, '').trim();
+    if (!nameText) return;
+
+    const normSeg = normalizeText(nameText);
+    if (!normSeg) return;
+
+    // 판촉물 목록에서 가장 잘 맞는 품목 찾기
+    let best = null, bestScore = 0;
+    promoItems.forEach(p => {
+      const normName = normalizeText(p.name);
+      let score = 0;
+      if (normName === normSeg) score = 100;
+      else if (normName.includes(normSeg)) score = 80 + normSeg.length;
+      else if (normSeg.includes(normName)) score = 70 + normName.length;
+      else {
+        // 토큰 단위 부분 일치 (2글자 이상 토큰, 어느 품목과도 무관한 단어는 무시)
+        const tokens = nameText.split(/\s+/).map(normalizeText).filter(t => t.length >= 2);
+        const relevant = tokens.filter(t => promoItems.some(x => normalizeText(x.name).includes(t)));
+        const hit = relevant.filter(t => normName.includes(t)).length;
+        if (hit > 0 && hit === relevant.length) score = 50 + hit * 5;
+        else if (hit > 0) score = 20 + hit * 5;
+      }
+      if (score > bestScore) { bestScore = score; best = p; }
+    });
+
+    if (best && bestScore >= 50) {
+      matched.push({ item: best, qty });
+    } else if (/\d/.test(seg) || seg.length >= 3) {
+      // 숫자가 있거나 품목명처럼 보이는데 매칭 실패한 경우만 보고
+      failed.push(seg);
+    }
+  });
+
+  if (!matched.length) {
+    resultEl.innerHTML = '<span style="color:var(--danger)">인식된 품목이 없습니다. 품목명을 확인해 주세요.</span>';
+    return;
+  }
+
+  // 매칭 결과 적용
+  matched.forEach(({ item, qty }) => { selectedPromoItems[item.id] = qty; });
+  renderRedeemPromoGrid();
+  calcRedeemTotal();
+
+  let html = '<span style="color:var(--primary-dark)">✅ 인식 완료: ' +
+    matched.map(m => `${m.item.name} × ${m.qty}`).join(', ') + '</span>';
+  if (failed.length) {
+    html += `<br><span style="color:var(--danger)">⚠️ 인식 실패: ${failed.join(' / ')} — 직접 선택해 주세요.</span>`;
+  }
+  resultEl.innerHTML = html;
+}
+
+function togglePromoItem(id) {
+  if (selectedPromoItems[id]) delete selectedPromoItems[id];
+  else selectedPromoItems[id] = 1;
+  renderRedeemPromoGrid();
+  calcRedeemTotal();
+}
+
+function setPromoQty(id, val) {
+  selectedPromoItems[id] = Math.max(1, parseInt(val) || 1);
+  calcRedeemTotal();
+}
+
+function addRedeemCustomItem() {
+  customRedeemItems.push({ id: uid(), name: '', price: '' });
+  renderCustomRedeemItems();
+}
+
+function renderCustomRedeemItems() {
+  document.getElementById('redeem-custom-list').innerHTML = customRedeemItems.map(item => `
+    <div class="rx-item-row" style="grid-template-columns:2fr 1fr auto">
+      <input type="text" placeholder="품목명" value="${item.name}" oninput="updateCustomRedeem('${item.id}','name',this.value)">
+      <input type="number" placeholder="금액" value="${item.price}" oninput="updateCustomRedeem('${item.id}','price',this.value)">
+      <button style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--gray-500)" onclick="removeCustomRedeem('${item.id}')">✕</button>
+    </div>
+  `).join('');
+}
+
+function updateCustomRedeem(id, field, val) {
+  const item = customRedeemItems.find(r => r.id === id);
+  if (item) { item[field] = val; calcRedeemTotal(); }
+}
+
+function removeCustomRedeem(id) {
+  customRedeemItems = customRedeemItems.filter(r => r.id !== id);
+  renderCustomRedeemItems();
+  calcRedeemTotal();
+}
+
+function calcRedeemTotal() {
+  let total = 0;
+  Object.entries(selectedPromoItems).forEach(([id, qty]) => {
+    const p = promoItems.find(x => x.id === id);
+    if (p) total += p.price * qty;
+  });
+  customRedeemItems.forEach(item => { total += parseFloat(item.price) || 0; });
+
+  document.getElementById('redeem-total-display').textContent = fmt(total);
+
+  const clinicId = document.getElementById('redeem-clinic').value;
+  if (clinicId) {
+    const { balance } = getClinicBalance(clinicId);
+    const after = balance - total;
+    document.getElementById('redeem-after-balance').textContent = `차감 후 잔액: ${fmt(after)}`;
+    document.getElementById('redeem-after-balance').style.color = after < 0 ? 'var(--danger)' : 'inherit';
+  }
+  return total;
+}
+
+function clearRedeemForm() {
+  document.getElementById('redeem-clinic').value = '';
+  document.getElementById('redeem-date').value = today();
+  document.getElementById('redeem-memo').value = '';
+  document.getElementById('redeem-balance-info').style.display = 'none';
+  selectedPromoItems = {};
+  customRedeemItems = [];
+  renderRedeemPromoGrid();
+  renderCustomRedeemItems();
+  calcRedeemTotal();
+}
+
+function saveRedeem() {
+  const clinicId = document.getElementById('redeem-clinic').value;
+  const date = document.getElementById('redeem-date').value;
+  const memo = document.getElementById('redeem-memo').value;
+  if (!clinicId) return alert('거래선을 선택하세요.');
+
+  const total = calcRedeemTotal();
+  if (total <= 0) return alert('차감할 항목을 선택하세요.');
+
+  const { balance } = getClinicBalance(clinicId);
+  const afterBalance = balance - total;
+
+  const items = [
+    ...Object.entries(selectedPromoItems).map(([id, qty]) => {
+      const p = promoItems.find(x => x.id === id);
+      return p ? { name: p.name, qty, price: p.price, amount: p.price * qty } : null;
+    }).filter(Boolean),
+    ...customRedeemItems.filter(r => r.name && r.price).map(r => ({ name: r.name, qty: 1, price: parseFloat(r.price), amount: parseFloat(r.price) }))
+  ];
+
+  if (!confirm(`차감액: ${fmt(total)}\n항목: ${items.map(i => i.name).join(', ')}\n차감 후 잔액: ${fmt(afterBalance)}${afterBalance < 0 ? ' (마이너스 — 다음달 적립으로 채워집니다)' : ''}\n\n차감하시겠습니까?`)) return;
+
+  transactions.push({ id: uid(), clinicId, type: 'spend', amount: total, items, date, memo, createdAt: Date.now() });
+  save();
+  clearRedeemForm();
+  renderRedeemHistory();
+  renderRedeemClinicSelect();
+  alert('✅ 마일리지가 차감되었습니다!');
+}
+
+function renderRedeemHistory() {
+  const txs = [...transactions.filter(t => t.type === 'spend')].sort((a, b) => b.createdAt - a.createdAt);
+  document.getElementById('redeem-history-list').innerHTML = txs.length ? txs.map(t => {
+    const c = clinics.find(x => x.id === t.clinicId);
+    const itemNames = (t.items || []).map(i => `${i.name} × ${fmtNum(i.qty || 1)}개`).join(', ');
+    return `<div class="history-item">
+      <div class="history-icon spend">🎁</div>
+      <div class="history-info">
+        <div class="history-clinic">${c?.name || '-'}</div>
+        <div class="history-desc">${itemNames || t.memo || '판촉물 차감'}</div>
+        <div class="history-date">${t.date || ''} ${t.memo ? '| ' + t.memo : ''}</div>
+      </div>
+      <div class="history-amount spend">-${fmt(t.amount)}</div>
+    </div>`;
+  }).join('') : '<div class="empty"><div class="empty-icon">🎁</div><p>차감 이력이 없습니다</p></div>';
+}
+
+// ===== RX DRUGS =====
+let editingRxDrugId = null;
+
+function renderRxDrugs() {
+  const sorted = [...rxDrugs].sort((a, b) => (a.category || '').localeCompare(b.category || '') || a.name.localeCompare(b.name));
+  document.getElementById('rx-drug-table-body').innerHTML = sorted.map(d => `
+    <tr>
+      <td><strong>${d.name}</strong></td>
+      <td>${d.code ? `<span class="badge badge-gray" style="font-variant-numeric:tabular-nums">${d.code}</span>` : '<span class="text-sm">-</span>'}</td>
+      <td class="td-num"><strong style="color:var(--primary)">${fmtNum(d.price)}</strong></td>
+      <td><span class="badge badge-orange">${d.category || '-'}</span></td>
+      <td>
+        <button class="btn btn-outline btn-sm" onclick="editRxDrug('${d.id}')">수정</button>
+        <button class="btn btn-outline btn-sm" style="margin-left:4px;color:var(--danger)" onclick="deleteRxDrug('${d.id}')">삭제</button>
+      </td>
+    </tr>
+  `).join('') || `<tr><td colspan="5"><div class="empty"><div class="empty-icon">💊</div><p>등록된 약품이 없습니다</p></div></td></tr>`;
+}
+
+function openRxDrugModal(id = null) {
+  editingRxDrugId = id;
+  document.getElementById('rx-drug-modal-title').textContent = id ? '처방약품 수정' : '처방약품 추가';
+  if (id) {
+    const d = rxDrugs.find(x => x.id === id);
+    document.getElementById('rdm-name').value = d.name;
+    document.getElementById('rdm-price').value = d.price;
+    document.getElementById('rdm-code').value = d.code || '';
+    document.getElementById('rdm-category').value = d.category || '';
+  } else {
+    ['rdm-name','rdm-price','rdm-code','rdm-category'].forEach(k => document.getElementById(k).value = '');
+  }
+  document.getElementById('rx-drug-modal').classList.add('open');
+}
+
+function closeRxDrugModal() { document.getElementById('rx-drug-modal').classList.remove('open'); }
+
+function saveRxDrug() {
+  const name = document.getElementById('rdm-name').value.trim();
+  const price = parseFloat(document.getElementById('rdm-price').value);
+  const code = document.getElementById('rdm-code').value.trim();
+  const category = document.getElementById('rdm-category').value.trim();
+  if (!name) return alert('약품명을 입력하세요.');
+  if (isNaN(price) || price < 0) return alert('단가를 입력하세요.');
+  if (editingRxDrugId) {
+    const d = rxDrugs.find(x => x.id === editingRxDrugId);
+    Object.assign(d, { name, price, code, category });
+  } else {
+    rxDrugs.push({ id: uid(), name, price, code, category });
+  }
+  save();
+  closeRxDrugModal();
+  renderRxDrugs();
+}
+
+function editRxDrug(id) { openRxDrugModal(id); }
+
+function deleteRxDrug(id) {
+  const d = rxDrugs.find(x => x.id === id);
+  requestDelete({
+    desc: `처방약품 <strong>"${d.name}"</strong> (단가 ${fmt(d.price)})을 삭제합니다.`,
+    onConfirm: () => {
+      rxDrugs = rxDrugs.filter(x => x.id !== id);
+      save();
+      renderRxDrugs();
+    }
+  });
+}
+
+// ===== PROMO ITEMS =====
+let editingPromoId = null;
+
+function renderPromoItems() {
+  const tbody = document.getElementById('promo-table-body');
+  const sorted = [...promoItems].sort((a, b) => (a.category || '').localeCompare(b.category || '') || a.name.localeCompare(b.name));
+  tbody.innerHTML = sorted.map(p => `
+    <tr>
+      <td><strong>${p.name}</strong></td>
+      <td class="td-num">${fmtNum(p.price)}</td>
+      <td><span class="badge badge-gray">${p.category || '-'}</span></td>
+      <td>
+        <button class="btn btn-outline btn-sm" onclick="editPromoItem('${p.id}')">수정</button>
+        <button class="btn btn-outline btn-sm" style="margin-left:4px;color:var(--danger)" onclick="deletePromoItem('${p.id}')">삭제</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function openPromoModal(id = null) {
+  editingPromoId = id;
+  if (id) {
+    const p = promoItems.find(x => x.id === id);
+    document.getElementById('pm-name').value = p.name;
+    document.getElementById('pm-price').value = p.price;
+    document.getElementById('pm-category').value = p.category || '';
+  } else {
+    ['pm-name','pm-price','pm-category'].forEach(k => document.getElementById(k).value = '');
+  }
+  document.getElementById('promo-modal').classList.add('open');
+}
+
+function closePromoModal() { document.getElementById('promo-modal').classList.remove('open'); }
+
+function savePromoItem() {
+  const name = document.getElementById('pm-name').value.trim();
+  const price = parseFloat(document.getElementById('pm-price').value);
+  const category = document.getElementById('pm-category').value.trim();
+  if (!name) return alert('품목명을 입력하세요.');
+  if (isNaN(price)) return alert('가격을 입력하세요.');
+  if (editingPromoId) {
+    const p = promoItems.find(x => x.id === editingPromoId);
+    Object.assign(p, { name, price, category });
+  } else {
+    promoItems.push({ id: uid(), name, price, category });
+  }
+  save();
+  closePromoModal();
+  renderPromoItems();
+}
+
+function editPromoItem(id) { openPromoModal(id); }
+
+function deletePromoItem(id) {
+  const p = promoItems.find(x => x.id === id);
+  requestDelete({
+    desc: `판촉물 <strong>"${p.name}"</strong> (${fmt(p.price)})을 삭제합니다.`,
+    onConfirm: () => {
+      promoItems = promoItems.filter(x => x.id !== id);
+      save();
+      renderPromoItems();
+    }
+  });
+}
+
+// ===== REPORT (카톡 전송용 이미지) =====
+function openReportModal(clinicId) {
+  const sel = document.getElementById('report-clinic');
+  sel.innerHTML = [...clinics].sort((a, b) => a.name.localeCompare(b.name))
+    .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  sel.value = clinicId;
+
+  // 해당 거래선의 가장 최근 처방 월을 기본값으로
+  const months = transactions.filter(t => t.clinicId === clinicId && t.type === 'earn' && t.rxMonth)
+    .map(t => t.rxMonth).sort();
+  document.getElementById('report-month').value = months.length ? months[months.length - 1] : thisMonth();
+
+  document.getElementById('report-modal').classList.add('open');
+  renderReport();
+}
+
+function closeReportModal() { document.getElementById('report-modal').classList.remove('open'); }
+
+function getReportData() {
+  const clinicId = document.getElementById('report-clinic').value;
+  const month = document.getElementById('report-month').value;
+  const c = clinics.find(x => x.id === clinicId);
+  if (!c) return null;
+
+  // 해당 월 처방 적립 건들의 품목 합산
+  const earnTxs = transactions.filter(t => t.clinicId === clinicId && t.type === 'earn' && t.rxMonth === month);
+  const rate = earnTxs.length ? earnTxs[earnTxs.length - 1].rate : c.rate;
+  const items = [];
+  earnTxs.forEach(t => (t.items || []).forEach(it => {
+    const qty = parseFloat(it.qty) || 0, price = parseFloat(it.price) || 0;
+    items.push({ name: it.name, qty, price, amount: qty * price, mileage: Math.round(qty * price * rate / 100) });
+  }));
+  const monthTotal = items.reduce((s, i) => s + i.amount, 0);
+  const monthMileage = earnTxs.reduce((s, t) => s + t.amount, 0);
+
+  // 해당 월 판촉물 차감
+  const spends = transactions.filter(t => t.clinicId === clinicId && t.type === 'spend' && t.date?.startsWith(month));
+  const spendRows = [];
+  spends.forEach(t => (t.items || []).forEach(it => {
+    spendRows.push({ date: t.date, name: it.name, qty: it.qty || 1, price: it.price || it.amount, amount: it.amount });
+  }));
+  const monthSpend = spendRows.reduce((s, r) => s + r.amount, 0);
+
+  const { earned, spent, balance } = getClinicBalance(clinicId);
+  // 실제 처방 기간이 저장돼 있으면 그대로 사용 (예: 5월 15일 ~ 6월 14일)
+  let periodStr;
+  const withRange = earnTxs.filter(t => t.rxStart && t.rxEnd);
+  if (withRange.length) {
+    const minStart = withRange.map(t => t.rxStart).sort()[0];
+    const maxEnd = withRange.map(t => t.rxEnd).sort().pop();
+    const f = s => `${String(s.slice(2, 4))}년 ${Number(s.slice(5, 7))}월 ${Number(s.slice(8, 10))}일`;
+    periodStr = `${f(minStart)} ~ ${f(maxEnd)}`;
+  } else {
+    const [y, m] = month.split('-').map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    periodStr = `${String(y).slice(2)}년 ${m}월 1일 ~ ${m}월 ${lastDay}일`;
+  }
+
+  return { c, month, rate, items, monthTotal, monthMileage, spendRows, monthSpend, earned, spent, balance, periodStr };
+}
+
+function renderReport() {
+  const d = getReportData();
+  if (!d) return;
+
+  const W = 900;
+  const rowH = 40;
+  const itemRows = Math.max(d.items.length, 1);
+  const spendRows = Math.max(d.spendRows.length, 1);
+  const H = 140 + (itemRows + 3) * rowH + 54 + (spendRows + 2) * rowH + 108;
+
+  const canvas = document.getElementById('report-canvas');
+  const scale = 2;
+  canvas.width = W * scale;
+  canvas.height = H * scale;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+
+  const F = "'Apple SD Gothic Neo','Malgun Gothic',sans-serif";
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+
+  // 제목
+  ctx.fillStyle = '#111827';
+  ctx.font = `bold 26px ${F}`;
+  ctx.fillText(`${d.c.name} 처방의약품 현황`, 40, 56);
+  ctx.font = `15px ${F}`;
+  ctx.fillStyle = '#6b7280';
+  ctx.fillText(`기간: ${d.periodStr}`, 40, 86);
+  ctx.fillText(`작성일시: ${new Date().toLocaleString('ko-KR')}`, 40, 110);
+
+  // 처방 테이블
+  const tX = 40, tW = W - 80;
+  const cols = [
+    { label: '품목명', w: 0.34, align: 'left' },
+    { label: '처방량', w: 0.15, align: 'right' },
+    { label: '단가 (원)', w: 0.15, align: 'right' },
+    { label: '처방금액 (원)', w: 0.18, align: 'right' },
+    { label: '마일리지 (원)', w: 0.18, align: 'right' },
+  ];
+  let y = 140;
+
+  function drawRow(cells, bg, fg, bold, fontSize = 15) {
+    ctx.fillStyle = bg;
+    ctx.fillRect(tX, y, tW, rowH);
+    ctx.strokeStyle = '#e5e7eb';
+    ctx.strokeRect(tX, y, tW, rowH);
+    ctx.fillStyle = fg;
+    ctx.font = `${bold ? 'bold ' : ''}${fontSize}px ${F}`;
+    let cx = tX;
+    cells.forEach((cell, i) => {
+      const cw = cols[i].w * tW;
+      if (cell !== null && cell !== undefined && cell !== '') {
+        if (cols[i].align === 'right') {
+          ctx.textAlign = 'right';
+          ctx.fillText(String(cell), cx + cw - 14, y + 26);
+        } else {
+          ctx.textAlign = 'left';
+          ctx.fillText(String(cell), cx + 14, y + 26);
+        }
+      }
+      cx += cw;
+    });
+    ctx.textAlign = 'left';
+    y += rowH;
+  }
+
+  drawRow(cols.map(c => c.label), '#4472c4', '#ffffff', true);
+  if (d.items.length) {
+    d.items.forEach(it => drawRow(
+      [it.name, fmtNum(it.qty), fmtNum(it.price), fmtNum(it.amount), fmtNum(it.mileage)],
+      '#ffffff', '#111827', false
+    ));
+  } else {
+    drawRow(['처방 내역 없음', '', '', '', ''], '#ffffff', '#9ca3af', false);
+  }
+  drawRow(['처방액 합계', '', '', fmtNum(d.monthTotal), fmtNum(d.monthMileage)], '#ddebf7', '#1f4e79', true);
+  drawRow([`누적 마일리지 (적립률 ${d.rate}%)`, '', '', '', fmtNum(d.earned)], '#fce4d6', '#c55a11', true);
+
+  // 판촉물 차감
+  y += 30;
+  ctx.fillStyle = '#111827';
+  ctx.font = `bold 20px ${F}`;
+  ctx.fillText('판촉물 주문 차감', tX, y + 8);
+  y += 24;
+
+  const sCols = [
+    { label: '날짜', w: 0.16, align: 'left' },
+    { label: '품목명', w: 0.4, align: 'left' },
+    { label: '수량', w: 0.1, align: 'right' },
+    { label: '단가 (원)', w: 0.16, align: 'right' },
+    { label: '금액 (원)', w: 0.18, align: 'right' },
+  ];
+  function drawSRow(cells, bg, fg, bold) {
+    ctx.fillStyle = bg;
+    ctx.fillRect(tX, y, tW, rowH);
+    ctx.strokeStyle = '#e5e7eb';
+    ctx.strokeRect(tX, y, tW, rowH);
+    ctx.fillStyle = fg;
+    ctx.font = `${bold ? 'bold ' : ''}15px ${F}`;
+    let cx = tX;
+    cells.forEach((cell, i) => {
+      const cw = sCols[i].w * tW;
+      if (cell !== null && cell !== undefined && cell !== '') {
+        if (sCols[i].align === 'right') {
+          ctx.textAlign = 'right';
+          ctx.fillText(String(cell), cx + cw - 14, y + 26);
+        } else {
+          ctx.textAlign = 'left';
+          ctx.fillText(String(cell), cx + 14, y + 26);
+        }
+      }
+      cx += cw;
+    });
+    ctx.textAlign = 'left';
+    y += rowH;
+  }
+
+  drawSRow(sCols.map(c => c.label), '#4472c4', '#ffffff', true);
+  if (d.spendRows.length) {
+    d.spendRows.forEach(r => drawSRow(
+      [r.date?.slice(2).replace(/-/g, '.'), r.name, fmtNum(r.qty), fmtNum(r.price), fmtNum(r.amount)],
+      '#ffffff', '#111827', false
+    ));
+  } else {
+    drawSRow(['', '차감 내역 없음', '', '', ''], '#ffffff', '#9ca3af', false);
+  }
+  drawSRow(['차감 합계 (누적)', '', '', '', fmtNum(d.spent)], '#ddebf7', '#1f4e79', true);
+
+  // 최종 잔액
+  y += 16;
+  ctx.fillStyle = '#fce4d6';
+  ctx.fillRect(tX, y, tW, 52);
+  ctx.strokeStyle = '#f4b183';
+  ctx.strokeRect(tX, y, tW, 52);
+  ctx.fillStyle = '#c55a11';
+  ctx.font = `bold 20px ${F}`;
+  ctx.fillText('마일리지 최종 잔액', tX + 14, y + 34);
+  ctx.textAlign = 'right';
+  ctx.font = `bold 24px ${F}`;
+  ctx.fillText(fmtNum(d.balance) + ' 원', tX + tW - 14, y + 35);
+  ctx.textAlign = 'left';
+}
+
+function downloadReportImage() {
+  const d = getReportData();
+  if (!d) return;
+  const canvas = document.getElementById('report-canvas');
+  canvas.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${d.c.name}_${d.month}_적립현황.png`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }, 'image/png');
+}
+
+function copyReportImage() {
+  const canvas = document.getElementById('report-canvas');
+  canvas.toBlob(blob => {
+    navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+      .then(() => alert('✅ 이미지가 복사되었습니다.\n카톡 채팅창에 붙여넣기(Cmd+V) 하세요.'))
+      .catch(() => alert('이미지 복사에 실패했습니다. "이미지 저장"을 이용해 주세요.'));
+  }, 'image/png');
+}
+
+function copyReportText() {
+  const d = getReportData();
+  if (!d) return;
+  let txt = `📋 ${d.c.name} 처방의약품 현황\n기간: ${d.periodStr}\n\n`;
+  if (d.items.length) {
+    d.items.forEach(it => { txt += `· ${it.name}: ${fmtNum(it.qty)} × ${fmtNum(it.price)}원 = ${fmtNum(it.amount)}원\n`; });
+    txt += `\n처방액 합계: ${fmtNum(d.monthTotal)}원\n이번달 적립 (${d.rate}%): ${fmtNum(d.monthMileage)}원\n`;
+  } else {
+    txt += '이번달 처방 내역 없음\n';
+  }
+  txt += `누적 적립: ${fmtNum(d.earned)}원\n`;
+  if (d.spendRows.length) {
+    txt += `\n🎁 판촉물 차감\n`;
+    d.spendRows.forEach(r => { txt += `· ${r.date?.slice(2)} ${r.name} × ${r.qty} = ${fmtNum(r.amount)}원\n`; });
+  }
+  txt += `누적 차감: ${fmtNum(d.spent)}원\n\n💰 마일리지 최종 잔액: ${fmtNum(d.balance)}원`;
+  navigator.clipboard.writeText(txt)
+    .then(() => alert('✅ 텍스트가 복사되었습니다.\n카톡 채팅창에 붙여넣기 하세요.'))
+    .catch(() => alert('복사에 실패했습니다.'));
+}
+
+// ===== HISTORY =====
+function renderHistoryFilters() {
+  const sel = document.getElementById('hist-clinic-filter');
+  sel.innerHTML = '<option value="">전체</option>' +
+    [...clinics].sort((a, b) => a.name.localeCompare(b.name)).map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+}
+
+function renderHistory() {
+  const clinicId = document.getElementById('hist-clinic-filter').value;
+  const type = document.getElementById('hist-type-filter').value;
+  const month = document.getElementById('hist-month-filter').value;
+
+  let txs = [...transactions];
+  if (clinicId) txs = txs.filter(t => t.clinicId === clinicId);
+  if (type) txs = txs.filter(t => t.type === type);
+  if (month) txs = txs.filter(t => t.date?.startsWith(month));
+  txs.sort((a, b) => b.createdAt - a.createdAt);
+
+  document.getElementById('history-list').innerHTML = txs.length ? txs.map(t => {
+    const c = clinics.find(x => x.id === t.clinicId);
+    const isEarn = t.type === 'earn';
+    return `<div class="history-item">
+      <div class="history-icon ${isEarn ? 'earn' : 'spend'}">${isEarn ? '📋' : '🎁'}</div>
+      <div class="history-info">
+        <div class="history-clinic">${c?.name || '-'}</div>
+        <div class="history-desc">${isEarn
+          ? `처방 적립 | ${txPeriod(t)} | 처방액 ${fmt(t.rxTotal || 0)} | 적립률 ${t.rate}%`
+          : `판촉물 차감 | ${(t.items || []).map(i => `${i.name} × ${fmtNum(i.qty || 1)}개`).join(', ') || '-'}`
+        }</div>
+        <div class="history-date">${t.date || ''} ${t.memo ? '| ' + t.memo : ''}</div>
+      </div>
+      <div style="text-align:right">
+        <div class="history-amount ${isEarn ? 'earn' : 'spend'}">${isEarn ? '+' : '-'}${fmt(t.amount)}</div>
+        <button class="btn btn-outline btn-sm" style="margin-top:4px;color:var(--danger)" onclick="deleteTx('${t.id}')">삭제</button>
+      </div>
+    </div>`;
+  }).join('') : '<div class="empty"><div class="empty-icon">📊</div><p>이력이 없습니다</p></div>';
+}
+
+function deleteTx(id) {
+  const t = transactions.find(x => x.id === id);
+  const c = clinics.find(x => x.id === t.clinicId);
+  const isEarn = t.type === 'earn';
+  requestDelete({
+    desc: `<strong>${c?.name || '-'}</strong>의 ${isEarn ? '적립' : '차감'} 이력을 삭제합니다.<br>
+      · ${t.date || ''} | <strong style="color:${isEarn ? 'var(--primary)' : 'var(--danger)'}">${isEarn ? '+' : '-'}${fmt(t.amount)}</strong><br>
+      · 삭제하면 거래선 잔액이 ${isEarn ? '줄어듭니다' : '늘어납니다'}`,
+    onConfirm: () => {
+      transactions = transactions.filter(x => x.id !== id);
+      save();
+      renderHistory();
+    }
+  });
+}
+
+// ===== INIT =====
+document.getElementById('dash-date').textContent = new Date().toLocaleDateString('ko-KR', { year:'numeric', month:'long', day:'numeric', weekday:'long' });
+renderDashboard();
+</script>
+</body>
+</html>
