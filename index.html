@@ -623,14 +623,10 @@
 <div class="modal-overlay" id="report-modal">
   <div class="modal" style="max-width:720px">
     <h3>📊 적립 현황 보고서 (카톡 전송용)</h3>
-    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;margin-bottom:16px;align-items:end">
+    <div style="display:grid;grid-template-columns:1fr auto;gap:12px;margin-bottom:16px;align-items:end">
       <div class="form-group">
         <label>거래선</label>
         <select id="report-clinic" onchange="renderReport()"></select>
-      </div>
-      <div class="form-group">
-        <label>처방 연월</label>
-        <input type="month" id="report-month" onchange="renderReport()">
       </div>
       <button class="btn btn-primary" onclick="renderReport()">생성</button>
     </div>
@@ -1917,11 +1913,6 @@ function openReportModal(clinicId) {
     .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   sel.value = clinicId;
 
-  // 해당 거래선의 가장 최근 처방 월을 기본값으로
-  const months = transactions.filter(t => t.clinicId === clinicId && t.type === 'earn' && t.rxMonth)
-    .map(t => t.rxMonth).sort();
-  document.getElementById('report-month').value = months.length ? months[months.length - 1] : thisMonth();
-
   document.getElementById('report-modal').classList.add('open');
   renderReport();
 }
@@ -1930,13 +1921,17 @@ function closeReportModal() { document.getElementById('report-modal').classList.
 
 function getReportData() {
   const clinicId = document.getElementById('report-clinic').value;
-  const month = document.getElementById('report-month').value;
   const c = clinics.find(x => x.id === clinicId);
   if (!c) return null;
 
-  // 해당 월 처방 적립 건들의 품목 합산
-  const earnTxs = transactions.filter(t => t.clinicId === clinicId && t.type === 'earn' && t.rxMonth === month);
-  const rate = earnTxs.length ? earnTxs[earnTxs.length - 1].rate : c.rate;
+  // 가장 최근 처방 earnTx 1건
+  const allEarnTxs = transactions
+    .filter(t => t.clinicId === clinicId && t.type === 'earn')
+    .sort((a, b) => b.createdAt - a.createdAt);
+  const latestEarnTx = allEarnTxs[0];
+  const earnTxs = latestEarnTx ? [latestEarnTx] : [];
+
+  const rate = latestEarnTx ? latestEarnTx.rate : c.rate;
   const items = [];
   earnTxs.forEach(t => (t.items || []).forEach(it => {
     const qty = parseFloat(it.qty) || 0, price = parseFloat(it.price) || 0;
@@ -1945,8 +1940,11 @@ function getReportData() {
   const monthTotal = items.reduce((s, i) => s + i.amount, 0);
   const monthMileage = earnTxs.reduce((s, t) => s + t.amount, 0);
 
-  // 해당 월 판촉물 차감
-  const spends = transactions.filter(t => t.clinicId === clinicId && t.type === 'spend' && t.date?.startsWith(month));
+  // 가장 최근 처방 rxStart 이후의 판촉물 차감
+  const refDate = latestEarnTx?.rxStart || latestEarnTx?.date || '';
+  const spends = transactions.filter(t =>
+    t.clinicId === clinicId && t.type === 'spend' && (!refDate || t.date >= refDate)
+  );
   const spendRows = [];
   spends.forEach(t => (t.items || []).forEach(it => {
     spendRows.push({ date: t.date, name: it.name, qty: it.qty || 1, price: it.price || it.amount, amount: it.amount });
@@ -1954,21 +1952,15 @@ function getReportData() {
   const monthSpend = spendRows.reduce((s, r) => s + r.amount, 0);
 
   const { earned, spent, balance, initial } = getClinicBalance(clinicId);
-  // 실제 처방 기간이 저장돼 있으면 그대로 사용 (예: 5월 15일 ~ 6월 14일)
-  let periodStr;
-  const withRange = earnTxs.filter(t => t.rxStart && t.rxEnd);
-  if (withRange.length) {
-    const minStart = withRange.map(t => t.rxStart).sort()[0];
-    const maxEnd = withRange.map(t => t.rxEnd).sort().pop();
-    const f = s => `${String(s.slice(2, 4))}년 ${Number(s.slice(5, 7))}월 ${Number(s.slice(8, 10))}일`;
-    periodStr = `${f(minStart)} ~ ${f(maxEnd)}`;
-  } else {
-    const [y, m] = month.split('-').map(Number);
-    const lastDay = new Date(y, m, 0).getDate();
-    periodStr = `${String(y).slice(2)}년 ${m}월 1일 ~ ${m}월 ${lastDay}일`;
+
+  // 처방 기간 문자열 (rxStart~rxEnd 직접 사용)
+  let periodStr = '';
+  if (latestEarnTx?.rxStart && latestEarnTx?.rxEnd) {
+    const f = s => `${s.slice(2, 4)}년 ${Number(s.slice(5, 7))}월 ${Number(s.slice(8, 10))}일`;
+    periodStr = `${f(latestEarnTx.rxStart)} ~ ${f(latestEarnTx.rxEnd)}`;
   }
 
-  return { c, month, rate, items, monthTotal, monthMileage, spendRows, monthSpend, earned, spent, balance, initial, periodStr };
+  return { c, rate, items, monthTotal, monthMileage, spendRows, monthSpend, earned, spent, balance, initial, periodStr };
 }
 
 function renderReport() {
@@ -2142,9 +2134,9 @@ function copyReportText() {
   let txt = `📋 ${d.c.name} 처방의약품 현황\n기간: ${d.periodStr}\n\n`;
   if (d.items.length) {
     d.items.forEach(it => { txt += `· ${it.name}: ${fmtNum(it.qty)} × ${fmtNum(it.price)}원 = ${fmtNum(it.amount)}원\n`; });
-    txt += `\n처방액 합계: ${fmtNum(d.monthTotal)}원\n이번달 적립 (${d.rate}%): ${fmtNum(d.monthMileage)}원\n`;
+    txt += `\n처방액 합계: ${fmtNum(d.monthTotal)}원\n이번 처방 적립 (${d.rate}%): ${fmtNum(d.monthMileage)}원\n`;
   } else {
-    txt += '이번달 처방 내역 없음\n';
+    txt += '이번 처방 내역 없음\n';
   }
   txt += `누적 적립${d.initial > 0 ? ' (이전잔액 포함)' : ''}: ${fmtNum(d.initial + d.earned)}원\n`;
   if (d.spendRows.length) {
