@@ -2313,13 +2313,20 @@ function renderPromoTrack() {
 }
 
 function renderPromoChecklist(year) {
+  const yrStr = String(year);
+  const clinicsWithSpends = new Set(
+    transactions
+      .filter(t => t.type === 'spend' && (t.date || '').startsWith(yrStr))
+      .map(t => t.clinicId)
+  );
+
   const targets = [...clinics]
-    .filter(c => c.regularPromos?.length)
+    .filter(c => c.regularPromos?.length || clinicsWithSpends.has(c.id))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   if (!targets.length) {
     document.getElementById('pt-checklist').innerHTML =
-      '<p style="color:var(--gray-400)">정기 발송 품목이 설정된 거래선이 없습니다. 거래선 편집에서 설정하세요.</p>';
+      '<p style="color:var(--gray-400)">발송 기록이 있는 거래선이 없습니다.</p>';
     return;
   }
 
