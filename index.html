@@ -654,6 +654,12 @@
     </div>
     <div class="form-row">
       <div class="form-group" style="grid-column:1/-1">
+        <label>주소 / 메모</label>
+        <input type="text" id="cm-address" placeholder="병원 주소 또는 메모 (빠른 입력 시 자동 채워짐)">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="grid-column:1/-1">
         <label>정기 발송 품목</label>
         <div id="cm-regular-promo-list" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid var(--gray-200);border-radius:6px;min-height:38px;background:var(--gray-50)"></div>
         <div class="text-sm" style="color:var(--gray-500);margin-top:4px">매달 정기적으로 발송하는 판촉물을 선택하세요</div>
@@ -1118,6 +1124,7 @@ function openClinicModal(id = null) {
   document.getElementById('cm-branch').value = c?.branch || '';
   document.getElementById('cm-rate').value = c?.rate ?? 10;
   document.getElementById('cm-initial').value = c?.initialBalance || 0;
+  document.getElementById('cm-address').value = c?.address || '';
   document.getElementById('cm-no-mileage').checked = c?.noMileage || false;
 
   const existing = c?.regularPromos || [];
@@ -1150,12 +1157,13 @@ function saveClinic() {
   const initialBalance = Math.round(parseFloat(document.getElementById('cm-initial').value) || 0);
   const regularPromos = [...document.querySelectorAll('#cm-regular-promo-list input:checked')].map(cb => cb.value);
   const noMileage = document.getElementById('cm-no-mileage').checked;
+  const address = document.getElementById('cm-address').value.trim();
   if (editingClinicId) {
     const c = clinics.find(x => x.id === editingClinicId);
-    Object.assign(c, { name, branch, rate, initialBalance, regularPromos, noMileage });
+    Object.assign(c, { name, branch, rate, initialBalance, regularPromos, noMileage, address });
   } else {
     savedId = uid();
-    clinics.push({ id: savedId, name, branch, rate, initialBalance, regularPromos, noMileage });
+    clinics.push({ id: savedId, name, branch, rate, initialBalance, regularPromos, noMileage, address });
   }
   save();
   closeClinicModal();
@@ -2532,6 +2540,23 @@ function findClinicByName(name) {
     || null;
 }
 
+// 품목명 정규화: 구글시트 raw 이름 → promoItems 내 정확한 이름으로 매핑
+function matchPromoItem(rawName) {
+  if (!rawName) return rawName;
+  const exact = promoItems.find(p => p.name === rawName);
+  if (exact) return exact.name;
+  const normRaw = normalizeText(rawName);
+  let best = null, bestScore = 0;
+  promoItems.forEach(p => {
+    const normName = normalizeText(p.name);
+    let score = 0;
+    if (normName === normRaw) score = 100;
+    else if (normName.includes(normRaw) || normRaw.includes(normName)) score = 70 + Math.min(normName.length, normRaw.length);
+    if (score > bestScore) { bestScore = score; best = p; }
+  });
+  return (best && bestScore >= 70) ? best.name : rawName;
+}
+
 function parseDispatchText(text) {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   const year = new Date().getFullYear();
@@ -2540,32 +2565,70 @@ function parseDispatchText(text) {
 
   lines.forEach(line => {
     const cols = line.split('\t');
-    if (cols.length >= 5) {
-      // Tab-separated (Google Sheets) format
+
+    if (cols.length >= 10) {
+      // 구형 13컬럼 구글시트 형식: col[2]=거래선, col[4]=품목, col[7]=수량, col[10]=정식명, col[12]=날짜
       const c2 = (cols[2] || '').trim();
       const c10 = (cols[10] || '').trim().replace(/\s*\(?MR\)?\s*$/i, '').trim();
       const itemRaw = (cols[4] || '').trim();
-      const qtyRaw = (cols[7] || '1').replace(/[^\d]/g, '');
-      const qty = parseInt(qtyRaw) || 1;
+      const qty = parseInt((cols[7] || '1').replace(/[^\d]/g, '')) || 1;
       const dateRaw = (cols[12] || '').trim();
       if ((!c2 && !c10) || skipNames.includes(c2) || !itemRaw || itemRaw === '품목') return;
       const clinicName = (c10 && c2 && c10.includes(c2)) ? c10 : (c10 || c2);
       if (!clinicName) return;
       const dm = dateRaw.match(/(\d{1,2})\/(\d{1,2})/);
       const date = dm ? `${year}-${dm[1].padStart(2,'0')}-${dm[2].padStart(2,'0')}` : today();
-      rawRecords.push({ name: clinicName, item: itemRaw, qty, date });
+      rawRecords.push({ name: clinicName, item: matchPromoItem(itemRaw), qty, date, address: '' });
+
+    } else if (cols.length >= 4) {
+      // 신형 MR ERP 형식: [거래선] [MR명] [품목(+수량?)] [수량 또는 거래선] [...] [주소] [M/D 출고]
+      const clinicName = (cols[0] || '').trim();
+      if (!clinicName || skipNames.some(s => clinicName.includes(s))) return;
+
+      let itemRaw = (cols[2] || '').trim();
+      if (!itemRaw) return;
+      let qty = 1;
+
+      // col[3]이 순수 숫자면 수량
+      if (/^\d+$/.test((cols[3] || '').trim())) {
+        qty = parseInt(cols[3]);
+      } else {
+        // 품목명 끝에 숫자가 붙어 있으면 수량으로 분리 ("핸드페이퍼 타월(5,000매) 2" → qty=2)
+        const qtyM = itemRaw.match(/\s+(\d+)\s*$/);
+        if (qtyM) { qty = parseInt(qtyM[1]); itemRaw = itemRaw.slice(0, qtyM.index).trim(); }
+      }
+
+      // 날짜: M/D 패턴이 들어 있는 마지막 컬럼에서 추출
+      let date = today();
+      for (let i = cols.length - 1; i >= 3; i--) {
+        const dm = (cols[i] || '').match(/(\d{1,2})\/(\d{1,2})/);
+        if (dm) { date = `${year}-${dm[1].padStart(2,'0')}-${dm[2].padStart(2,'0')}`; break; }
+      }
+
+      // 주소: 길고 지역명이 포함된 컬럼
+      let address = '';
+      for (let i = cols.length - 1; i >= 3; i--) {
+        const val = (cols[i] || '').trim();
+        if (val.length > 10 && /서울|경기|인천|부산|대구|대전|광주|층|호$/.test(val)) {
+          address = val; break;
+        }
+      }
+
+      rawRecords.push({ name: clinicName, item: matchPromoItem(itemRaw), qty, date, address });
+
     } else {
-      // Free-form line
+      // 자유 형식
       const rec = parseFreeFormDispatch(line, year);
-      if (rec) rawRecords.push(rec);
+      if (rec) rawRecords.push({ ...rec, address: '' });
     }
   });
 
-  // Group by clinic name + date, merge items
+  // 거래선+날짜 기준으로 묶어서 품목 합산
   const groups = {};
   rawRecords.forEach(r => {
     const key = `${r.name}||${r.date}`;
-    if (!groups[key]) groups[key] = { name: r.name, date: r.date, items: [] };
+    if (!groups[key]) groups[key] = { name: r.name, date: r.date, address: r.address || '', items: [] };
+    else if (r.address && !groups[key].address) groups[key].address = r.address;
     const existing = groups[key].items.find(i => i.item === r.item);
     if (existing) existing.qty += r.qty;
     else groups[key].items.push({ item: r.item, qty: r.qty });
@@ -2682,9 +2745,12 @@ function saveQuickRecords() {
   groups.forEach(g => {
     let clinic = g.existingClinic || findClinicByName(g.name);
     if (!clinic) {
-      clinic = { id: uid(), name: g.name, branch: '', rate: 10, initialBalance: 0, regularPromos: [], noMileage: true };
+      clinic = { id: uid(), name: g.name, branch: '', rate: 10, initialBalance: 0,
+                 regularPromos: [], noMileage: true, address: g.address || '' };
       clinics.push(clinic);
       newClinicCount++;
+    } else if (g.address && !clinic.address) {
+      clinic.address = g.address;
     }
     // Skip duplicate (same clinic + date + first item)
     const firstItem = g.items[0]?.item;
