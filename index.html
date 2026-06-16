@@ -2442,7 +2442,25 @@ function renderPromoChecklist(year) {
   const thCells = months.map(m => `<th style="padding:6px 4px;text-align:center;font-size:13px;color:var(--gray-500);min-width:72px">${m}월</th>`).join('');
 
   const rows = targets.map(c => {
-    const badge = c.noMileage ? '<br><span style="font-size:10px;color:var(--gray-400);font-weight:normal">(기록만)</span>' : '';
+    // 이 거래선의 첫 발송 이력 → 신규 배지 표시
+    const firstSpend = transactions
+      .filter(t => t.clinicId === c.id && t.type === 'spend' && t.date)
+      .sort((a, b) => a.date.localeCompare(b.date))[0];
+    let newBadge = '';
+    if (firstSpend) {
+      const fy = parseInt(firstSpend.date.slice(0, 4));
+      const fm = parseInt(firstSpend.date.slice(5, 7));
+      if (fy === year) {
+        newBadge = `<span style="display:inline-block;margin-left:5px;font-size:10px;font-weight:700;color:#92400e;background:#fde68a;border-radius:3px;padding:1px 5px;vertical-align:middle">${fm}월 신규</span>`;
+      } else if (fy > year) {
+        // 해당 연도에 아직 거래 없음
+      } else {
+        // 이전 연도에 시작 — 몇 년도 신규인지
+        newBadge = `<span style="display:inline-block;margin-left:5px;font-size:10px;font-weight:600;color:var(--gray-400);background:var(--gray-100);border-radius:3px;padding:1px 5px;vertical-align:middle">${String(fy).slice(2)}.${fm}월~</span>`;
+      }
+    }
+    const noMileageBadge = c.noMileage ? '<br><span style="font-size:10px;color:var(--gray-400);font-weight:normal">(기록만)</span>' : '';
+
     const tdCells = months.map(m => {
       const ym = `${year}-${String(m).padStart(2, '0')}`;
       const isPast = ym <= currentYm;
@@ -2455,23 +2473,24 @@ function renderPromoChecklist(year) {
 
       if (sentItems.length) {
         const day = monthSpends[0]?.date?.slice(8) || '';
-        return `<td style="padding:4px;text-align:center;background:#d1fae5;font-size:12px;line-height:1.4">
-          <div style="color:#065f46;font-weight:600">${sentItems.join('/')}</div>
-          ${day ? `<div style="color:#6ee7b7;font-size:11px">${Number(day)}일</div>` : ''}
+        return `<td style="padding:4px;text-align:center;background:#059669;font-size:12px;line-height:1.5;border-radius:4px">
+          <div style="color:#fff;font-weight:700">${sentItems.join('/')}</div>
+          ${day ? `<div style="color:#a7f3d0;font-size:11px;font-weight:600">${Number(day)}일</div>` : ''}
         </td>`;
       } else if (isPast) {
-        // 지난 달인데 미발송 → 클릭하면 차감 입력으로
-        return `<td style="padding:4px;text-align:center;background:#fef9e7;cursor:pointer" title="${m}월 차감 입력"
+        return `<td style="padding:4px;text-align:center;background:#f1f5f9;cursor:pointer;border-radius:4px" title="${m}월 차감 입력"
           onclick="navigate('redeem');setTimeout(()=>{document.getElementById('redeem-clinic').value='${c.id}';updateRedeemBalance();},50)">
-          <span style="font-size:16px">⬜</span>
+          <span style="font-size:15px;color:#cbd5e1">—</span>
         </td>`;
       } else {
-        return `<td style="padding:4px;text-align:center;color:var(--gray-200);font-size:13px">-</td>`;
+        return `<td style="padding:4px;text-align:center;color:var(--gray-200);font-size:13px">·</td>`;
       }
     }).join('');
 
     return `<tr style="border-bottom:1px solid var(--gray-100)">
-      <td style="padding:8px 12px;font-weight:600;font-size:13px;white-space:nowrap;min-width:110px;vertical-align:middle">${c.name}${badge}</td>
+      <td style="padding:8px 12px;font-size:13px;white-space:nowrap;min-width:120px;vertical-align:middle">
+        <span style="font-weight:600">${c.name}</span>${newBadge}${noMileageBadge}
+      </td>
       ${tdCells}
     </tr>`;
   }).join('');
