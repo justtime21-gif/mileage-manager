@@ -241,6 +241,9 @@
       <div class="nav-item" onclick="navigate('history')">
         <span class="nav-icon">📊</span><span>이력 조회</span>
       </div>
+      <div class="nav-item" onclick="navigate('promo-track')">
+        <span class="nav-icon">🚚</span><span>발송 현황</span>
+      </div>
     </nav>
   </aside>
 
@@ -562,6 +565,35 @@
       </div>
     </div>
 
+    <!-- 발송 현황 -->
+    <div id="page-promo-track" class="page">
+      <div class="page-header">
+        <h2>🚚 판촉물 발송 현황</h2>
+        <p>월별 발송 체크리스트 및 거래선별 이력</p>
+      </div>
+
+      <!-- 월별 체크리스트 -->
+      <div class="card" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+          <h3 style="margin:0">이번달 발송 체크리스트</h3>
+          <input type="month" id="pt-month" onchange="renderPromoTrack()" style="border:1px solid var(--gray-300);border-radius:6px;padding:6px 10px">
+        </div>
+        <div id="pt-checklist"></div>
+      </div>
+
+      <!-- 거래선별 이력 -->
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+          <h3 style="margin:0">거래선별 발송 이력</h3>
+          <select id="pt-clinic-filter" onchange="renderPromoHistory()" style="border:1px solid var(--gray-300);border-radius:6px;padding:6px 10px">
+            <option value="">전체</option>
+          </select>
+          <button class="btn btn-outline" onclick="copyAllPromoHistory()">📋 전체 복사</button>
+        </div>
+        <div id="pt-history"></div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -590,6 +622,22 @@
         <label>이전 누적 잔액 (원)</label>
         <input type="number" id="cm-initial" min="0" step="1" placeholder="0" value="0">
         <div class="text-sm" style="color:var(--gray-500);margin-top:4px">앱 사용 전 이미 적립된 마일리지 잔액이 있으면 입력하세요</div>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="grid-column:1/-1">
+        <label>정기 발송 품목</label>
+        <div id="cm-regular-promo-list" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid var(--gray-200);border-radius:6px;min-height:38px;background:var(--gray-50)"></div>
+        <div class="text-sm" style="color:var(--gray-500);margin-top:4px">매달 정기적으로 발송하는 판촉물을 선택하세요</div>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="grid-column:1/-1">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal">
+          <input type="checkbox" id="cm-no-mileage" style="width:16px;height:16px">
+          <span>마일리지 미적용 거래처 (발송 기록만)</span>
+        </label>
+        <div class="text-sm" style="color:var(--gray-500);margin-top:4px">판촉물을 마일리지 대신 직접 지급하는 거래처</div>
       </div>
     </div>
     <div class="modal-footer">
@@ -922,7 +970,7 @@ function navigate(page) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   const navItems = document.querySelectorAll('.nav-item');
-  const pageOrder = ['dashboard', 'clinics', 'prescriptions', 'redeem', 'rx-drugs', 'promo-items', 'history'];
+  const pageOrder = ['dashboard', 'clinics', 'prescriptions', 'redeem', 'rx-drugs', 'promo-items', 'history', 'promo-track'];
   const idx = pageOrder.indexOf(page);
   if (idx >= 0) navItems[idx].classList.add('active');
 
@@ -933,6 +981,7 @@ function navigate(page) {
   if (page === 'rx-drugs') renderRxDrugs();
   if (page === 'promo-items') renderPromoItems();
   if (page === 'history') { renderHistoryFilters(); renderHistory(); }
+  if (page === 'promo-track') renderPromoTrack();
 }
 
 // ===== DASHBOARD =====
@@ -1023,17 +1072,20 @@ function filterClinics(val) { renderClinics(val); }
 function openClinicModal(id = null) {
   editingClinicId = id;
   document.getElementById('clinic-modal-title').textContent = id ? '거래선 수정' : '거래선 추가';
-  if (id) {
-    const c = clinics.find(x => x.id === id);
-    document.getElementById('cm-name').value = c.name;
-    document.getElementById('cm-branch').value = c.branch || '';
-    document.getElementById('cm-rate').value = c.rate;
-    document.getElementById('cm-initial').value = c.initialBalance || 0;
-  } else {
-    ['cm-name','cm-branch'].forEach(id => document.getElementById(id).value = '');
-    document.getElementById('cm-rate').value = 10;
-    document.getElementById('cm-initial').value = 0;
-  }
+  const c = id ? clinics.find(x => x.id === id) : null;
+  document.getElementById('cm-name').value = c?.name || '';
+  document.getElementById('cm-branch').value = c?.branch || '';
+  document.getElementById('cm-rate').value = c?.rate ?? 10;
+  document.getElementById('cm-initial').value = c?.initialBalance || 0;
+  document.getElementById('cm-no-mileage').checked = c?.noMileage || false;
+
+  const existing = c?.regularPromos || [];
+  document.getElementById('cm-regular-promo-list').innerHTML = promoItems.map(p =>
+    `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:3px 8px;border:1px solid var(--gray-300);border-radius:4px;font-size:13px;background:white">
+      <input type="checkbox" value="${p.name}" ${existing.includes(p.name) ? 'checked' : ''}> ${p.name}
+    </label>`
+  ).join('');
+
   document.getElementById('clinic-modal').classList.add('open');
 }
 
@@ -1055,12 +1107,14 @@ function saveClinic() {
   let savedId = editingClinicId;
   const branch = document.getElementById('cm-branch').value.trim();
   const initialBalance = Math.round(parseFloat(document.getElementById('cm-initial').value) || 0);
+  const regularPromos = [...document.querySelectorAll('#cm-regular-promo-list input:checked')].map(cb => cb.value);
+  const noMileage = document.getElementById('cm-no-mileage').checked;
   if (editingClinicId) {
     const c = clinics.find(x => x.id === editingClinicId);
-    Object.assign(c, { name, branch, rate, initialBalance });
+    Object.assign(c, { name, branch, rate, initialBalance, regularPromos, noMileage });
   } else {
     savedId = uid();
-    clinics.push({ id: savedId, name, branch, rate, initialBalance });
+    clinics.push({ id: savedId, name, branch, rate, initialBalance, regularPromos, noMileage });
   }
   save();
   closeClinicModal();
@@ -1535,10 +1589,15 @@ function updateRedeemBalance() {
   const c = clinics.find(x => x.id === clinicId);
   const { balance } = getClinicBalance(clinicId);
   info.style.display = 'block';
-  document.getElementById('redeem-clinic-name').textContent = c.name;
+  document.getElementById('redeem-clinic-name').textContent = c.name + (c.noMileage ? ' 〔마일리지 미적용〕' : '');
   const balEl = document.getElementById('redeem-balance-display');
-  balEl.textContent = fmt(balance);
-  balEl.style.color = balance < 0 ? 'var(--danger)' : 'inherit';
+  if (c.noMileage) {
+    balEl.textContent = '발송 기록만 저장 (잔액 차감 없음)';
+    balEl.style.color = 'var(--gray-500)';
+  } else {
+    balEl.textContent = fmt(balance);
+    balEl.style.color = balance < 0 ? 'var(--danger)' : 'inherit';
+  }
   calcRedeemTotal();
 }
 
@@ -1732,11 +1791,8 @@ function saveRedeem() {
   const memo = document.getElementById('redeem-memo').value;
   if (!clinicId) return alert('거래선을 선택하세요.');
 
+  const c = clinics.find(x => x.id === clinicId);
   const total = calcRedeemTotal();
-  if (total <= 0) return alert('차감할 항목을 선택하세요.');
-
-  const { balance } = getClinicBalance(clinicId);
-  const afterBalance = balance - total;
 
   const items = [
     ...Object.entries(selectedPromoItems).map(([id, qty]) => {
@@ -1746,14 +1802,24 @@ function saveRedeem() {
     ...customRedeemItems.filter(r => r.name && r.price).map(r => ({ name: r.name, qty: 1, price: parseFloat(r.price), amount: parseFloat(r.price) }))
   ];
 
-  if (!confirm(`차감액: ${fmt(total)}\n항목: ${items.map(i => i.name).join(', ')}\n차감 후 잔액: ${fmt(afterBalance)}${afterBalance < 0 ? ' (마이너스 — 다음달 적립으로 채워집니다)' : ''}\n\n차감하시겠습니까?`)) return;
+  if (!items.length) return alert('발송할 항목을 선택하세요.');
 
-  transactions.push({ id: uid(), clinicId, type: 'spend', amount: total, items, date, memo, createdAt: Date.now() });
+  if (c?.noMileage) {
+    if (!confirm(`발송 기록 저장 (마일리지 차감 없음)\n항목: ${items.map(i => i.name).join(', ')}\n\n저장하시겠습니까?`)) return;
+    transactions.push({ id: uid(), clinicId, type: 'spend', amount: 0, items, date, memo, createdAt: Date.now() });
+  } else {
+    if (total <= 0) return alert('차감할 항목을 선택하세요.');
+    const { balance } = getClinicBalance(clinicId);
+    const afterBalance = balance - total;
+    if (!confirm(`차감액: ${fmt(total)}\n항목: ${items.map(i => i.name).join(', ')}\n차감 후 잔액: ${fmt(afterBalance)}${afterBalance < 0 ? ' (마이너스 — 다음달 적립으로 채워집니다)' : ''}\n\n차감하시겠습니까?`)) return;
+    transactions.push({ id: uid(), clinicId, type: 'spend', amount: total, items, date, memo, createdAt: Date.now() });
+  }
+
   save();
   clearRedeemForm();
   renderRedeemHistory();
   renderRedeemClinicSelect();
-  alert('✅ 마일리지가 차감되었습니다!');
+  alert(c?.noMileage ? '✅ 발송 기록이 저장되었습니다!' : '✅ 마일리지가 차감되었습니다!');
 }
 
 function renderRedeemHistory() {
@@ -2146,6 +2212,147 @@ function copyReportText() {
   txt += `누적 차감: ${fmtNum(d.spent)}원\n\n💰 마일리지 최종 잔액: ${fmtNum(d.balance)}원`;
   navigator.clipboard.writeText(txt)
     .then(() => alert('✅ 텍스트가 복사되었습니다.\n카톡 채팅창에 붙여넣기 하세요.'))
+    .catch(() => alert('복사에 실패했습니다.'));
+}
+
+// ===== PROMO TRACK =====
+function renderPromoTrack() {
+  const ym = document.getElementById('pt-month').value || thisMonth();
+  document.getElementById('pt-month').value = ym;
+
+  const clinicFilter = document.getElementById('pt-clinic-filter');
+  const prevVal = clinicFilter.value;
+  clinicFilter.innerHTML = '<option value="">전체</option>' +
+    [...clinics].sort((a, b) => a.name.localeCompare(b.name))
+      .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  clinicFilter.value = prevVal;
+
+  renderPromoChecklist(ym);
+  renderPromoHistory();
+}
+
+function renderPromoChecklist(ym) {
+  const targets = [...clinics]
+    .filter(c => c.regularPromos?.length)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (!targets.length) {
+    document.getElementById('pt-checklist').innerHTML =
+      '<p style="color:var(--gray-400)">정기 발송 품목이 설정된 거래선이 없습니다. 거래선 편집에서 설정하세요.</p>';
+    return;
+  }
+
+  const rows = targets.flatMap(c => {
+    const monthSpends = transactions.filter(t =>
+      t.clinicId === c.id && t.type === 'spend' && t.date?.startsWith(ym)
+    );
+    return c.regularPromos.map(promoName => {
+      const sent = monthSpends.find(t =>
+        (t.items || []).some(it => it.name.includes(promoName) || promoName.includes(it.name))
+      );
+      const sentDate = sent ? sent.date.slice(5).replace('-', '.') : null;
+      const noMileageBadge = c.noMileage ? ' <span style="font-size:11px;color:var(--gray-400)">(기록만)</span>' : '';
+      return `<tr style="border-bottom:1px solid var(--gray-100)">
+        <td style="padding:8px;text-align:center;font-size:18px">${sentDate ? '✅' : '⬜'}</td>
+        <td style="padding:8px;font-weight:600">${c.name}${noMileageBadge}</td>
+        <td style="padding:8px;color:var(--gray-600)">${promoName}</td>
+        <td style="padding:8px">${sentDate
+          ? `<span style="color:var(--success);font-weight:600">${sentDate} 발송</span>`
+          : '<span style="color:var(--gray-400)">미발송</span>'}</td>
+        <td style="padding:8px">${sentDate ? '' :
+          `<button class="btn btn-outline" style="padding:2px 10px;font-size:12px"
+            onclick="navigate('redeem');setTimeout(()=>{document.getElementById('redeem-clinic').value='${c.id}';updateRedeemBalance();},50)">
+            차감 입력
+          </button>`}</td>
+      </tr>`;
+    });
+  }).join('');
+
+  document.getElementById('pt-checklist').innerHTML = `
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:var(--gray-50);font-size:13px;color:var(--gray-500)">
+        <th style="padding:8px;width:40px"></th>
+        <th style="padding:8px;text-align:left">거래선</th>
+        <th style="padding:8px;text-align:left">정기 품목</th>
+        <th style="padding:8px;text-align:left">이번달 발송</th>
+        <th style="padding:8px;width:100px"></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderPromoHistory() {
+  const clinicId = document.getElementById('pt-clinic-filter').value;
+  const targets = clinicId
+    ? clinics.filter(c => c.id === clinicId)
+    : [...clinics].sort((a, b) => a.name.localeCompare(b.name));
+
+  const rows = targets.map(c => {
+    const spends = transactions
+      .filter(t => t.clinicId === c.id && t.type === 'spend')
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    if (!spends.length) return '';
+    const timeline = spends.flatMap(t =>
+      (t.items || []).map(it => {
+        const d = t.date || '';
+        const qty = (it.qty || 1) > 1 ? `×${it.qty}` : '';
+        return `${Number(d.slice(5, 7))}월${Number(d.slice(8, 10))}일 ${it.name}${qty}`;
+      })
+    ).join('  ');
+    const badge = c.noMileage
+      ? '<span style="font-size:11px;color:var(--gray-400);margin-left:4px">(기록만)</span>' : '';
+    return `<div style="display:flex;align-items:baseline;gap:12px;padding:10px 0;border-bottom:1px solid var(--gray-100)">
+      <span style="min-width:130px;font-weight:600;flex-shrink:0">${c.name}${badge}</span>
+      <span style="color:var(--gray-600);font-size:14px;flex:1;line-height:1.6">${timeline}</span>
+      <button class="btn btn-outline" style="padding:2px 10px;font-size:12px;flex-shrink:0"
+        onclick="copyPromoHistory('${c.id}')">복사</button>
+    </div>`;
+  }).filter(Boolean).join('');
+
+  document.getElementById('pt-history').innerHTML = rows ||
+    '<p style="color:var(--gray-400)">발송 내역이 없습니다.</p>';
+}
+
+function copyPromoHistory(clinicId) {
+  const c = clinics.find(x => x.id === clinicId);
+  if (!c) return;
+  const spends = transactions
+    .filter(t => t.clinicId === clinicId && t.type === 'spend')
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  const timeline = spends.flatMap(t =>
+    (t.items || []).map(it => {
+      const d = t.date || '';
+      const qty = (it.qty || 1) > 1 ? `×${it.qty}` : '';
+      return `${Number(d.slice(5, 7))}월${Number(d.slice(8, 10))}일 ${it.name}${qty}`;
+    })
+  ).join(' ');
+  navigator.clipboard.writeText(`${c.name} ${timeline}`)
+    .then(() => alert('✅ 복사되었습니다.'))
+    .catch(() => alert('복사에 실패했습니다.'));
+}
+
+function copyAllPromoHistory() {
+  const clinicId = document.getElementById('pt-clinic-filter').value;
+  const targets = clinicId
+    ? clinics.filter(c => c.id === clinicId)
+    : [...clinics].sort((a, b) => a.name.localeCompare(b.name));
+  const lines = targets.map(c => {
+    const spends = transactions
+      .filter(t => t.clinicId === c.id && t.type === 'spend')
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    if (!spends.length) return null;
+    const timeline = spends.flatMap(t =>
+      (t.items || []).map(it => {
+        const d = t.date || '';
+        const qty = (it.qty || 1) > 1 ? `×${it.qty}` : '';
+        return `${Number(d.slice(5, 7))}월${Number(d.slice(8, 10))}일 ${it.name}${qty}`;
+      })
+    ).join(' ');
+    return `${c.name} ${timeline}`;
+  }).filter(Boolean);
+  if (!lines.length) return alert('복사할 내역이 없습니다.');
+  navigator.clipboard.writeText(lines.join('\n'))
+    .then(() => alert(`✅ ${lines.length}개 거래선 복사되었습니다.`))
     .catch(() => alert('복사에 실패했습니다.'));
 }
 
