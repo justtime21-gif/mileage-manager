@@ -664,6 +664,26 @@
     </div>
     <div class="form-row">
       <div class="form-group" style="grid-column:1/-1">
+        <label>거래 시작</label>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="cm-start-type" onchange="toggleStartDate()" style="border:1px solid var(--gray-300);border-radius:6px;padding:6px 10px;font-size:14px">
+            <option value="">기존</option>
+            <option value="new">신규</option>
+          </select>
+          <span id="cm-start-date-wrap" style="display:none;gap:6px;align-items:center">
+            <select id="cm-start-year" style="border:1px solid var(--gray-300);border-radius:6px;padding:6px 10px;font-size:14px"></select>년
+            <select id="cm-start-month" style="border:1px solid var(--gray-300);border-radius:6px;padding:6px 10px;font-size:14px">
+              <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+              <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+              <option value="7">7</option><option value="8">8</option><option value="9">9</option>
+              <option value="10">10</option><option value="11">11</option><option value="12">12</option>
+            </select>월
+          </span>
+        </div>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="grid-column:1/-1">
         <div onclick="toggleRegularPromos()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:6px 0;user-select:none">
           <label style="cursor:pointer;margin:0">정기 발송 품목</label>
           <span id="cm-promo-arrow" style="font-size:12px;color:var(--gray-400)">▼</span>
@@ -1153,6 +1173,21 @@ function openClinicModal(id = null) {
   document.getElementById('cm-address').value = c?.address || '';
   document.getElementById('cm-no-mileage').checked = c?.noMileage || false;
 
+  // 거래 시작 드롭다운
+  const curY = new Date().getFullYear();
+  document.getElementById('cm-start-year').innerHTML =
+    [curY, curY-1, curY-2].map(y => `<option value="${y}">${y}</option>`).join('');
+  const startYm = c?.startYm || '';
+  document.getElementById('cm-start-type').value = startYm ? 'new' : '';
+  if (startYm) {
+    document.getElementById('cm-start-year').value = startYm.slice(0, 4);
+    document.getElementById('cm-start-month').value = String(parseInt(startYm.slice(5, 7)));
+  } else {
+    document.getElementById('cm-start-year').value = String(curY);
+    document.getElementById('cm-start-month').value = String(new Date().getMonth() + 1);
+  }
+  toggleStartDate();
+
   const existing = c?.regularPromos || [];
   document.getElementById('cm-regular-promo-list').innerHTML = promoItems.map(p =>
     `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:3px 8px;border:1px solid var(--gray-300);border-radius:4px;font-size:13px;background:white">
@@ -1174,6 +1209,11 @@ function toggleRegularPromos(forceOpen) {
   arrow.textContent = open ? '▲' : '▼';
 }
 
+function toggleStartDate() {
+  const isNew = document.getElementById('cm-start-type').value === 'new';
+  document.getElementById('cm-start-date-wrap').style.display = isNew ? 'flex' : 'none';
+}
+
 let clinicModalFromRx = false;
 
 function openClinicModalFromRx() {
@@ -1193,12 +1233,18 @@ function saveClinic() {
   const regularPromos = [...document.querySelectorAll('#cm-regular-promo-list input:checked')].map(cb => cb.value);
   const noMileage = document.getElementById('cm-no-mileage').checked;
   const address = document.getElementById('cm-address').value.trim();
+  let startYm = '';
+  if (document.getElementById('cm-start-type').value === 'new') {
+    const y = document.getElementById('cm-start-year').value;
+    const m = document.getElementById('cm-start-month').value.padStart(2, '0');
+    startYm = `${y}-${m}`;
+  }
   if (editingClinicId) {
     const c = clinics.find(x => x.id === editingClinicId);
-    Object.assign(c, { name, branch, rate, initialBalance, regularPromos, noMileage, address });
+    Object.assign(c, { name, branch, rate, initialBalance, regularPromos, noMileage, address, startYm });
   } else {
     savedId = uid();
-    clinics.push({ id: savedId, name, branch, rate, initialBalance, regularPromos, noMileage, address });
+    clinics.push({ id: savedId, name, branch, rate, initialBalance, regularPromos, noMileage, address, startYm });
   }
   save();
   closeClinicModal();
@@ -2439,31 +2485,27 @@ function renderPromoChecklist(year) {
   // 이름 축약: "종이컵 (1,000개)" → "종이컵"
   const shortName = name => name.includes('(') ? name.split('(')[0].trim() : name;
 
-  const thCells = months.map(m => `<th style="padding:6px 4px;text-align:center;font-size:13px;color:var(--gray-500);min-width:72px">${m}월</th>`).join('');
+  const thCells = months.map((m, i) =>
+    `<th style="padding:6px 4px;text-align:center;font-size:13px;color:var(--gray-500);min-width:72px;${i > 0 ? 'border-left:1px solid var(--gray-200)' : ''}">${m}월</th>`
+  ).join('');
 
   const rows = targets.map(c => {
-    // 이 거래선의 첫 발송 이력 → 신규 배지 표시
-    const firstSpend = transactions
-      .filter(t => t.clinicId === c.id && t.type === 'spend' && t.date)
-      .sort((a, b) => a.date.localeCompare(b.date))[0];
+    // clinic.startYm 기반 신규 배지
     let newBadge = '';
-    if (firstSpend) {
-      const fy = parseInt(firstSpend.date.slice(0, 4));
-      const fm = parseInt(firstSpend.date.slice(5, 7));
+    if (c.startYm) {
+      const fy = parseInt(c.startYm.slice(0, 4));
+      const fm = parseInt(c.startYm.slice(5, 7));
       if (fy === year) {
         newBadge = `<span style="display:inline-block;margin-left:5px;font-size:10px;font-weight:700;color:#92400e;background:#fde68a;border-radius:3px;padding:1px 5px;vertical-align:middle">${fm}월 신규</span>`;
-      } else if (fy > year) {
-        // 해당 연도에 아직 거래 없음
       } else {
-        // 이전 연도에 시작 — 몇 년도 신규인지
         newBadge = `<span style="display:inline-block;margin-left:5px;font-size:10px;font-weight:600;color:var(--gray-400);background:var(--gray-100);border-radius:3px;padding:1px 5px;vertical-align:middle">${String(fy).slice(2)}.${fm}월~</span>`;
       }
     }
-    const noMileageBadge = c.noMileage ? '<br><span style="font-size:10px;color:var(--gray-400);font-weight:normal">(기록만)</span>' : '';
 
-    const tdCells = months.map(m => {
+    const tdCells = months.map((m, i) => {
       const ym = `${year}-${String(m).padStart(2, '0')}`;
       const isPast = ym <= currentYm;
+      const sep = i > 0 ? 'border-left:1px solid var(--gray-100);' : '';
       const monthSpends = transactions.filter(t =>
         t.clinicId === c.id && t.type === 'spend' && t.date?.startsWith(ym)
       );
@@ -2473,23 +2515,23 @@ function renderPromoChecklist(year) {
 
       if (sentItems.length) {
         const day = monthSpends[0]?.date?.slice(8) || '';
-        return `<td style="padding:4px;text-align:center;background:#059669;font-size:12px;line-height:1.5;border-radius:4px">
+        return `<td style="padding:4px;text-align:center;background:#059669;font-size:12px;line-height:1.5;border-radius:4px;${sep}">
           <div style="color:#fff;font-weight:700">${sentItems.join('/')}</div>
           ${day ? `<div style="color:#a7f3d0;font-size:11px;font-weight:600">${Number(day)}일</div>` : ''}
         </td>`;
       } else if (isPast) {
-        return `<td style="padding:4px;text-align:center;background:#f1f5f9;cursor:pointer;border-radius:4px" title="${m}월 차감 입력"
+        return `<td style="padding:4px;text-align:center;background:#f1f5f9;cursor:pointer;border-radius:4px;${sep}" title="${m}월 차감 입력"
           onclick="navigate('redeem');setTimeout(()=>{document.getElementById('redeem-clinic').value='${c.id}';updateRedeemBalance();},50)">
           <span style="font-size:15px;color:#cbd5e1">—</span>
         </td>`;
       } else {
-        return `<td style="padding:4px;text-align:center;color:var(--gray-200);font-size:13px">·</td>`;
+        return `<td style="padding:4px;text-align:center;color:var(--gray-200);font-size:13px;${sep}">·</td>`;
       }
     }).join('');
 
     return `<tr style="border-bottom:1px solid var(--gray-100)">
       <td style="padding:8px 12px;font-size:13px;white-space:nowrap;min-width:120px;vertical-align:middle">
-        <span style="font-weight:600">${c.name}</span>${newBadge}${noMileageBadge}
+        <span style="font-weight:600">${c.name}</span>${newBadge}
       </td>
       ${tdCells}
     </tr>`;
