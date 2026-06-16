@@ -697,6 +697,15 @@
     <div class="form-row">
       <div class="form-group" style="grid-column:1/-1">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal">
+          <input type="checkbox" id="cm-dual-track" style="width:16px;height:16px">
+          <span>💊 마일리지 + 정기 발송 병행 <span style="font-size:12px;color:var(--gray-400)">(발송 현황에 표시)</span></span>
+        </label>
+        <div class="text-sm" style="color:var(--gray-500);margin-top:4px">마일리지가 누적되면서 종이컵 등 정기 발송도 함께 하는 거래처</div>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="grid-column:1/-1">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal">
           <input type="checkbox" id="cm-no-mileage" style="width:16px;height:16px">
           <span>마일리지 미적용 거래처 (발송 기록만)</span>
         </label>
@@ -1172,6 +1181,7 @@ function openClinicModal(id = null) {
   document.getElementById('cm-initial').value = c?.initialBalance || 0;
   document.getElementById('cm-address').value = c?.address || '';
   document.getElementById('cm-no-mileage').checked = c?.noMileage || false;
+  document.getElementById('cm-dual-track').checked = c?.dualTrack || false;
 
   // 거래 시작 드롭다운
   const curY = new Date().getFullYear();
@@ -1232,6 +1242,7 @@ function saveClinic() {
   const initialBalance = Math.round(parseFloat(document.getElementById('cm-initial').value) || 0);
   const regularPromos = [...document.querySelectorAll('#cm-regular-promo-list input:checked')].map(cb => cb.value);
   const noMileage = document.getElementById('cm-no-mileage').checked;
+  const dualTrack = document.getElementById('cm-dual-track').checked;
   const address = document.getElementById('cm-address').value.trim();
   let startYm = '';
   if (document.getElementById('cm-start-type').value === 'new') {
@@ -1241,10 +1252,10 @@ function saveClinic() {
   }
   if (editingClinicId) {
     const c = clinics.find(x => x.id === editingClinicId);
-    Object.assign(c, { name, branch, rate, initialBalance, regularPromos, noMileage, address, startYm });
+    Object.assign(c, { name, branch, rate, initialBalance, regularPromos, noMileage, dualTrack, address, startYm });
   } else {
     savedId = uid();
-    clinics.push({ id: savedId, name, branch, rate, initialBalance, regularPromos, noMileage, address, startYm });
+    clinics.push({ id: savedId, name, branch, rate, initialBalance, regularPromos, noMileage, dualTrack, address, startYm });
   }
   save();
   closeClinicModal();
@@ -2469,7 +2480,7 @@ function renderPromoChecklist(year) {
   );
 
   const targets = [...clinics]
-    .filter(c => c.regularPromos?.length || clinicsWithSpends.has(c.id))
+    .filter(c => c.regularPromos?.length || c.dualTrack || clinicsWithSpends.has(c.id))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   if (!targets.length) {
@@ -2501,6 +2512,10 @@ function renderPromoChecklist(year) {
         newBadge = `<span style="display:inline-block;margin-left:5px;font-size:10px;font-weight:600;color:var(--gray-400);background:var(--gray-100);border-radius:3px;padding:1px 5px;vertical-align:middle">${String(fy).slice(2)}.${fm}월~</span>`;
       }
     }
+    // 마일리지+발송 병행 배지
+    const dualBadge = c.dualTrack
+      ? `<span style="display:inline-block;margin-left:5px;font-size:10px;font-weight:700;color:#1d4ed8;background:#dbeafe;border-radius:3px;padding:1px 5px;vertical-align:middle">💊+발송</span>`
+      : '';
 
     const tdCells = months.map((m, i) => {
       const ym = `${year}-${String(m).padStart(2, '0')}`;
@@ -2509,9 +2524,15 @@ function renderPromoChecklist(year) {
       const monthSpends = transactions.filter(t =>
         t.clinicId === c.id && t.type === 'spend' && t.date?.startsWith(ym)
       );
-      const sentItems = [...new Set(
-        monthSpends.flatMap(t => (t.items || []).map(it => shortName(it.name)))
-      )];
+      // 품목별 수량 합산
+      const itemQtyMap = {};
+      monthSpends.flatMap(t => t.items || []).forEach(it => {
+        const n = shortName(it.name);
+        itemQtyMap[n] = (itemQtyMap[n] || 0) + (it.qty || 1);
+      });
+      const sentItems = Object.entries(itemQtyMap).map(([n, qty]) =>
+        qty > 1 ? `${n} ×${qty}` : n
+      );
 
       if (sentItems.length) {
         const day = monthSpends[0]?.date?.slice(8) || '';
@@ -2531,7 +2552,7 @@ function renderPromoChecklist(year) {
 
     return `<tr style="border-bottom:1px solid var(--gray-100)">
       <td style="padding:8px 12px;font-size:13px;white-space:nowrap;min-width:120px;vertical-align:middle">
-        <span style="font-weight:600">${c.name}</span>${newBadge}
+        <span style="font-weight:600">${c.name}</span>${newBadge}${dualBadge}
       </td>
       ${tdCells}
     </tr>`;
