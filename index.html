@@ -1286,7 +1286,7 @@ function loadPrevRx() {
     id: uid(),
     drugId: it.drugId || '',
     name: it.name || '',
-    qty: String(it.qty || ''),
+    qty: '',
     price: String(it.price || '')
   }));
   if (!rxItems.length) { addRxItem(); addRxItem(); addRxItem(); }
