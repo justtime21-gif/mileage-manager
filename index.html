@@ -856,8 +856,15 @@ function migrateCombinedPromoItems() {
       result.push(p);
     }
   });
+  // 중복 제거: 품목명이 같은 항목 중 첫 번째만 유지
+  const seenNames = new Set();
+  const deduped = result.filter(p => {
+    if (seenNames.has(p.name)) { changed = true; return false; }
+    seenNames.add(p.name);
+    return true;
+  });
   if (changed) {
-    promoItems = result;
+    promoItems = deduped;
     DB.set('promoItems', promoItems);
   }
 }
