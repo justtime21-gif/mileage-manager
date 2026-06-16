@@ -245,6 +245,10 @@
         <span class="nav-icon">🚚</span><span>발송 현황</span>
       </div>
     </nav>
+    <div style="padding:12px 8px;border-top:1px solid rgba(255,255,255,0.1);display:flex;gap:6px">
+      <button onclick="exportData()" style="flex:1;padding:6px 4px;font-size:11px;background:rgba(255,255,255,0.1);color:white;border:none;border-radius:6px;cursor:pointer" title="데이터 내보내기">📤 내보내기</button>
+      <button onclick="document.getElementById('import-modal').classList.add('open')" style="flex:1;padding:6px 4px;font-size:11px;background:rgba(255,255,255,0.1);color:white;border:none;border-radius:6px;cursor:pointer" title="데이터 가져오기">📥 가져오기</button>
+    </div>
   </aside>
 
   <!-- Main -->
@@ -666,6 +670,19 @@
     <div class="modal-footer" style="margin-top:0">
       <button class="btn btn-outline" onclick="closeDeleteModal()">취소</button>
       <button class="btn btn-danger" id="delete-confirm-btn" onclick="executeDelete()" disabled style="opacity:0.4">삭제</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal-overlay" id="import-modal">
+  <div class="modal" style="max-width:560px">
+    <h3>📥 데이터 가져오기</h3>
+    <p style="color:var(--gray-500);font-size:14px;margin-bottom:12px">내보내기로 저장한 JSON을 붙여넣으세요. 기존 데이터와 병합됩니다.</p>
+    <textarea id="import-json" rows="10" style="width:100%;font-size:12px;font-family:monospace;border:1px solid var(--gray-300);border-radius:6px;padding:8px;box-sizing:border-box" placeholder='{"clinics":[...],"transactions":[...]}'></textarea>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="document.getElementById('import-modal').classList.remove('open')">취소</button>
+      <button class="btn btn-primary" onclick="importData()">가져오기</button>
     </div>
   </div>
 </div>
@@ -2216,6 +2233,46 @@ function copyReportText() {
   navigator.clipboard.writeText(txt)
     .then(() => alert('✅ 텍스트가 복사되었습니다.\n카톡 채팅창에 붙여넣기 하세요.'))
     .catch(() => alert('복사에 실패했습니다.'));
+}
+
+// ===== EXPORT / IMPORT =====
+function exportData() {
+  const data = {
+    clinics: JSON.parse(localStorage.getItem('mileage_clinics') || '[]'),
+    transactions: JSON.parse(localStorage.getItem('mileage_transactions') || '[]'),
+    rxDrugs: JSON.parse(localStorage.getItem('mileage_rxDrugs') || '[]'),
+    promoItems: JSON.parse(localStorage.getItem('mileage_promoItems') || '[]'),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `mileage-backup-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+}
+
+function importData() {
+  let data;
+  try { data = JSON.parse(document.getElementById('import-json').value); }
+  catch(e) { return alert('JSON 형식이 올바르지 않습니다.'); }
+
+  let ca = 0, ta = 0;
+  if (data.clinics) {
+    data.clinics.forEach(c => { if (!clinics.find(x => x.id === c.id)) { clinics.push(c); ca++; } });
+  }
+  if (data.transactions) {
+    data.transactions.forEach(t => { if (!transactions.find(x => x.id === t.id)) { transactions.push(t); ta++; } });
+  }
+  if (data.rxDrugs) {
+    data.rxDrugs.forEach(d => { if (!rxDrugs.find(x => x.id === d.id)) rxDrugs.push(d); });
+  }
+  if (data.promoItems) {
+    data.promoItems.forEach(p => { if (!promoItems.find(x => x.id === p.id)) promoItems.push(p); });
+  }
+  save();
+  document.getElementById('import-modal').classList.remove('open');
+  document.getElementById('import-json').value = '';
+  alert(`✅ 완료: 거래선 ${ca}개, 발송기록 ${ta}건 추가되었습니다.\n페이지를 새로고침합니다.`);
+  location.reload();
 }
 
 // ===== PROMO TRACK =====
