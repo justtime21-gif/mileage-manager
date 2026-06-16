@@ -572,13 +572,16 @@
         <p>월별 발송 체크리스트 및 거래선별 이력</p>
       </div>
 
-      <!-- 월별 체크리스트 -->
+      <!-- 연간 체크리스트 -->
       <div class="card" style="margin-bottom:16px">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
-          <h3 style="margin:0">이번달 발송 체크리스트</h3>
-          <input type="month" id="pt-month" onchange="renderPromoTrack()" style="border:1px solid var(--gray-300);border-radius:6px;padding:6px 10px">
+          <h3 style="margin:0">발송 체크리스트</h3>
+          <input type="number" id="pt-year" min="2020" max="2099" onchange="renderPromoTrack()" style="width:90px;border:1px solid var(--gray-300);border-radius:6px;padding:6px 10px">
+          <span style="font-size:13px;color:var(--gray-400)">✅ 발송완료 &nbsp; ⬜ 미발송 (클릭 → 입력)</span>
         </div>
-        <div id="pt-checklist"></div>
+        <div style="overflow-x:auto">
+          <div id="pt-checklist"></div>
+        </div>
       </div>
 
       <!-- 거래선별 이력 -->
@@ -2217,8 +2220,8 @@ function copyReportText() {
 
 // ===== PROMO TRACK =====
 function renderPromoTrack() {
-  const ym = document.getElementById('pt-month').value || thisMonth();
-  document.getElementById('pt-month').value = ym;
+  const year = parseInt(document.getElementById('pt-year').value) || new Date().getFullYear();
+  document.getElementById('pt-year').value = year;
 
   const clinicFilter = document.getElementById('pt-clinic-filter');
   const prevVal = clinicFilter.value;
@@ -2227,11 +2230,11 @@ function renderPromoTrack() {
       .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   clinicFilter.value = prevVal;
 
-  renderPromoChecklist(ym);
+  renderPromoChecklist(year);
   renderPromoHistory();
 }
 
-function renderPromoChecklist(ym) {
+function renderPromoChecklist(year) {
   const targets = [...clinics]
     .filter(c => c.regularPromos?.length)
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -2242,40 +2245,55 @@ function renderPromoChecklist(ym) {
     return;
   }
 
-  const rows = targets.flatMap(c => {
-    const monthSpends = transactions.filter(t =>
-      t.clinicId === c.id && t.type === 'spend' && t.date?.startsWith(ym)
-    );
-    return c.regularPromos.map(promoName => {
-      const sent = monthSpends.find(t =>
-        (t.items || []).some(it => it.name.includes(promoName) || promoName.includes(it.name))
+  const now = new Date();
+  const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const months = [1,2,3,4,5,6,7,8,9,10,11,12];
+
+  // 이름 축약: "종이컵 (1,000개)" → "종이컵"
+  const shortName = name => name.includes('(') ? name.split('(')[0].trim() : name;
+
+  const thCells = months.map(m => `<th style="padding:6px 4px;text-align:center;font-size:13px;color:var(--gray-500);min-width:72px">${m}월</th>`).join('');
+
+  const rows = targets.map(c => {
+    const badge = c.noMileage ? '<br><span style="font-size:10px;color:var(--gray-400);font-weight:normal">(기록만)</span>' : '';
+    const tdCells = months.map(m => {
+      const ym = `${year}-${String(m).padStart(2, '0')}`;
+      const isPast = ym <= currentYm;
+      const monthSpends = transactions.filter(t =>
+        t.clinicId === c.id && t.type === 'spend' && t.date?.startsWith(ym)
       );
-      const sentDate = sent ? sent.date.slice(5).replace('-', '.') : null;
-      const noMileageBadge = c.noMileage ? ' <span style="font-size:11px;color:var(--gray-400)">(기록만)</span>' : '';
-      return `<tr style="border-bottom:1px solid var(--gray-100)">
-        <td style="padding:8px;text-align:center;font-size:18px">${sentDate ? '✅' : '⬜'}</td>
-        <td style="padding:8px;font-weight:600">${c.name}${noMileageBadge}</td>
-        <td style="padding:8px;color:var(--gray-600)">${promoName}</td>
-        <td style="padding:8px">${sentDate
-          ? `<span style="color:var(--success);font-weight:600">${sentDate} 발송</span>`
-          : '<span style="color:var(--gray-400)">미발송</span>'}</td>
-        <td style="padding:8px">${sentDate ? '' :
-          `<button class="btn btn-outline" style="padding:2px 10px;font-size:12px"
-            onclick="navigate('redeem');setTimeout(()=>{document.getElementById('redeem-clinic').value='${c.id}';updateRedeemBalance();},50)">
-            차감 입력
-          </button>`}</td>
-      </tr>`;
-    });
+      const sentItems = [...new Set(
+        monthSpends.flatMap(t => (t.items || []).map(it => shortName(it.name)))
+      )];
+
+      if (sentItems.length) {
+        const day = monthSpends[0]?.date?.slice(8) || '';
+        return `<td style="padding:4px;text-align:center;background:#d1fae5;font-size:12px;line-height:1.4">
+          <div style="color:#065f46;font-weight:600">${sentItems.join('/')}</div>
+          ${day ? `<div style="color:#6ee7b7;font-size:11px">${Number(day)}일</div>` : ''}
+        </td>`;
+      } else if (isPast) {
+        // 지난 달인데 미발송 → 클릭하면 차감 입력으로
+        return `<td style="padding:4px;text-align:center;background:#fef9e7;cursor:pointer" title="${m}월 차감 입력"
+          onclick="navigate('redeem');setTimeout(()=>{document.getElementById('redeem-clinic').value='${c.id}';updateRedeemBalance();},50)">
+          <span style="font-size:16px">⬜</span>
+        </td>`;
+      } else {
+        return `<td style="padding:4px;text-align:center;color:var(--gray-200);font-size:13px">-</td>`;
+      }
+    }).join('');
+
+    return `<tr style="border-bottom:1px solid var(--gray-100)">
+      <td style="padding:8px 12px;font-weight:600;font-size:13px;white-space:nowrap;min-width:110px;vertical-align:middle">${c.name}${badge}</td>
+      ${tdCells}
+    </tr>`;
   }).join('');
 
   document.getElementById('pt-checklist').innerHTML = `
-    <table style="width:100%;border-collapse:collapse">
-      <thead><tr style="background:var(--gray-50);font-size:13px;color:var(--gray-500)">
-        <th style="padding:8px;width:40px"></th>
-        <th style="padding:8px;text-align:left">거래선</th>
-        <th style="padding:8px;text-align:left">정기 품목</th>
-        <th style="padding:8px;text-align:left">이번달 발송</th>
-        <th style="padding:8px;width:100px"></th>
+    <table style="border-collapse:collapse;width:100%">
+      <thead><tr style="background:var(--gray-50)">
+        <th style="padding:8px 12px;text-align:left;font-size:13px;color:var(--gray-500);min-width:110px">거래선</th>
+        ${thCells}
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
