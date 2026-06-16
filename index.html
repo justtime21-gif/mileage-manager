@@ -917,6 +917,16 @@ function migrateBrochureDrugs() {
     }
   });
 
+  // 중복 제거: 보험코드 또는 약품명이 같은 항목 중 첫 번째만 유지
+  const seenCodes = new Set(), seenNames = new Set();
+  rxDrugs = rxDrugs.filter(d => {
+    if (d.code && seenCodes.has(d.code)) { changed = true; return false; }
+    if (d.code) seenCodes.add(d.code);
+    if (seenNames.has(d.name)) { changed = true; return false; }
+    seenNames.add(d.name);
+    return true;
+  });
+
   if (changed) DB.set('rxDrugs', rxDrugs);
 }
 
@@ -1545,22 +1555,33 @@ function applyOcrResult(text) {
     usedLines.add(m.lineIdx);
     usedDrugs.add(m.drug.id);
 
-    // 수량 추출: 원외처방통계 표 컬럼 순서 고정 활용
-    // 표 컬럼 순서: 단가(0) 급여처방횟수(1) 급여처방량(2) 비급여횟수(3) 비급여처방량(4) 총처방횟수(5) 총처방량(6) 횟수비율%(7) 처방량비율%(8)
-    // → 총처방량 = index 6 (7번째 숫자)
+    // 수량 추출: EMR별 처방통계 3가지 형식 지원
+    // [Format B] 표준 9컬럼: 단가|급여횟수|급여량|비급여횟수|비급여량|총처방횟수|총처방량|횟수%|처방량%  → index 6
+    // [Format A] 단순 4컬럼(보라하나치과): 코드|약재명|총투약량|처방횟수  → 정리 후 숫자 2개, 첫 번째가 총투약량
+    // [Format C] Andwin(화성/효치과): 수가코드|약품명|표준코드|단가|수량|금액|회사  → 금액≈단가×수량으로 감지
     const cleaned = m.line.replace(/,/g, '')
-      .replace(/\([^)]*\)/g, '')                        // 괄호 안 내용 제거 — 약품명 내 (1정)(100mL) 등 숫자 제거
-      .replace(/\d{7,}/g, '')                          // 보험코드(7자리+) 제거
-      .replace(/\d+\.?\d*\s*(mg|mL|ml|g|mcg|μg)/gi, '') // 약품명 내 용량 표기 제거 (60mg, 100mL 등)
-      .replace(/\d+\.?\d*\s*%/g, '')                   // % 비율 제거 (18.4%, 0.9%, 0.12% 등)
-      .replace(/\d+\.\d+/g, '');                        // 나머지 소수 제거
-    const nums = (cleaned.match(/\d+/g) || []).map(Number);
+      .replace(/\([^)]*\)/g, '')                         // 괄호 안 내용 제거 — 약품명 내 (1정)(100mL) 등
+      .replace(/\d{7,}/g, '')                            // 보험코드(7자리+) 제거
+      .replace(/\d+\.?\d*\s*(mg|mL|ml|g|mcg|μg)/gi, '') // 약품명 내 용량 표기 제거
+      .replace(/\/\d+[가-힣]+/g, '')                     // /1정, /1캡슐 등 단위 스펙 제거
+      .replace(/\d+\.?\d*\s*%/g, '');                    // % 비율 제거
+    // 소수점 수량(예: 690.0) 지원 — Math.floor로 정수화
+    const nums = (cleaned.match(/\d+(?:\.\d+)?/g) || []).map(v => Math.floor(parseFloat(v)));
+    const nl = nums.length;
     let qty = '';
-    if (nums.length >= 7) {
-      qty = nums[6];  // 총처방량 직접 추출
+    if (nl >= 7) {
+      // [Format B] 표준 9컬럼
+      qty = nums[6];
+    } else if (nl >= 3 && Math.abs(nums[nl-1] - nums[nl-3] * nums[nl-2]) <= Math.max(nums[nl-1] * 0.02, 1)) {
+      // [Format C] Andwin: 금액 = 단가 × 수량 관계 감지 → 수량 = 뒤에서 두 번째
+      qty = nums[nl-2];
+    } else if (nl <= 2) {
+      // [Format A] 단순 4컬럼: 총투약량이 처방횟수보다 앞에 위치
+      const cands = nums.filter(v => v !== m.drug.price && v > 0);
+      if (cands.length >= 1) qty = cands[0];
     } else {
-      // 컬럼 수 부족 시 단가 제외한 마지막 양수
-      const cands = nums.filter(n => n !== m.drug.price && n > 0);
+      // 기타 폴백: 단가 제외 마지막 양수
+      const cands = nums.filter(v => v !== m.drug.price && v > 0);
       if (cands.length) qty = cands[cands.length - 1];
     }
     if (!qty || qty <= 0) qty = '';
