@@ -208,7 +208,28 @@
     .sidebar-logo h1::before { content: '💊'; font-size: 22px; }
     .sidebar-logo small { display: none; }
     .main { margin-left: 64px; padding: 16px; }
+    #quick-panel { left: 64px; }
   }
+  #quick-panel {
+    position: fixed; bottom: 0; left: 220px; right: 0; z-index: 200;
+    transform: translateY(calc(100% - 42px));
+    transition: transform 0.25s ease;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.12);
+  }
+  #quick-panel.open { transform: translateY(0); }
+  #quick-panel-header {
+    background: var(--primary); color: white;
+    padding: 10px 16px; display: flex; align-items: center;
+    justify-content: space-between; cursor: pointer; user-select: none;
+  }
+  #quick-panel-body {
+    background: white; border-top: 2px solid var(--primary);
+    padding: 16px; max-height: 55vh; overflow-y: auto;
+  }
+  .qp-preview-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .qp-preview-table th { padding: 6px 10px; text-align: left; background: var(--gray-50); font-weight: 600; }
+  .qp-preview-table td { padding: 7px 10px; border-top: 1px solid var(--gray-100); vertical-align: middle; }
+  .qp-new-badge { font-size: 11px; background: #fef3c7; color: #92400e; padding: 1px 6px; border-radius: 3px; margin-left: 4px; }
 </style>
 </head>
 <body>
@@ -2486,9 +2507,231 @@ function deleteTx(id) {
   });
 }
 
+// ===== 빠른 발송 입력 =====
+function toggleQuickPanel() {
+  const panel = document.getElementById('quick-panel');
+  const isOpen = panel.classList.toggle('open');
+  document.getElementById('quick-panel-arrow').textContent = isOpen ? '▼' : '▲';
+  if (isOpen) document.getElementById('quick-input-text').focus();
+}
+
+function findClinicByName(name) {
+  if (!name) return null;
+  const norm = s => s.replace(/\s/g, '').toLowerCase();
+  const nm = norm(name);
+  return clinics.find(c => norm(c.name) === nm)
+    || clinics.find(c => nm.includes(norm(c.name)) && norm(c.name).length >= 3)
+    || clinics.find(c => norm(c.name).includes(nm) && nm.length >= 3)
+    || null;
+}
+
+function parseDispatchText(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const year = new Date().getFullYear();
+  const rawRecords = [];
+  const skipNames = ['사무실','사내','자체','본사','헤드'];
+
+  lines.forEach(line => {
+    const cols = line.split('\t');
+    if (cols.length >= 5) {
+      // Tab-separated (Google Sheets) format
+      const c2 = (cols[2] || '').trim();
+      const c10 = (cols[10] || '').trim().replace(/\s*\(?MR\)?\s*$/i, '').trim();
+      const itemRaw = (cols[4] || '').trim();
+      const qtyRaw = (cols[7] || '1').replace(/[^\d]/g, '');
+      const qty = parseInt(qtyRaw) || 1;
+      const dateRaw = (cols[12] || '').trim();
+      if ((!c2 && !c10) || skipNames.includes(c2) || !itemRaw || itemRaw === '품목') return;
+      const clinicName = (c10 && c2 && c10.includes(c2)) ? c10 : (c10 || c2);
+      if (!clinicName) return;
+      const dm = dateRaw.match(/(\d{1,2})\/(\d{1,2})/);
+      const date = dm ? `${year}-${dm[1].padStart(2,'0')}-${dm[2].padStart(2,'0')}` : today();
+      rawRecords.push({ name: clinicName, item: itemRaw, qty, date });
+    } else {
+      // Free-form line
+      const rec = parseFreeFormDispatch(line, year);
+      if (rec) rawRecords.push(rec);
+    }
+  });
+
+  // Group by clinic name + date, merge items
+  const groups = {};
+  rawRecords.forEach(r => {
+    const key = `${r.name}||${r.date}`;
+    if (!groups[key]) groups[key] = { name: r.name, date: r.date, items: [] };
+    const existing = groups[key].items.find(i => i.item === r.item);
+    if (existing) existing.qty += r.qty;
+    else groups[key].items.push({ item: r.item, qty: r.qty });
+  });
+
+  return Object.values(groups).map(g => ({
+    ...g,
+    existingClinic: findClinicByName(g.name),
+    isNew: !findClinicByName(g.name)
+  }));
+}
+
+function parseFreeFormDispatch(line, year) {
+  let text = line
+    .replace(/안녕하세요|감사합니다|수고하세요|부탁드립니다|출고해주세요|출고 완료|발송 완료/g, '')
+    .trim();
+  if (!text) return null;
+
+  // Detect date
+  const dateM = text.match(/(\d{1,2})\/(\d{1,2})|(\d{1,2})월\s*(\d{1,2})일/);
+  let date;
+  if (dateM) {
+    const mo = dateM[1] || dateM[3];
+    const dy = dateM[2] || dateM[4];
+    date = `${year}-${mo.padStart(2,'0')}-${dy.padStart(2,'0')}`;
+  } else {
+    date = today();
+  }
+
+  // Find item (longest match first)
+  let foundItem = null, itemIdx = -1, itemLen = 0;
+  const sortedPromos = [...promoItems].sort((a, b) => b.name.length - a.name.length);
+  for (const p of sortedPromos) {
+    const short = p.name.includes('(') ? p.name.split('(')[0].trim() : p.name;
+    const idx = text.indexOf(short);
+    if (idx >= 0) { foundItem = p.name; itemIdx = idx; itemLen = short.length; break; }
+  }
+
+  // Find quantity
+  let qty = 1;
+  const qtyM = text.match(/(\d+)\s*(?:개|박스|통|장|매|ea)?/i);
+  if (qtyM) {
+    const n = parseInt(qtyM[1]);
+    if (n >= 1 && n <= 999) qty = n;
+  }
+
+  // Find clinic — check existing clinics first (longest name first)
+  let clinicName = null;
+  const sortedClinics = [...clinics].sort((a, b) => b.name.length - a.name.length);
+  for (const c of sortedClinics) {
+    if (text.includes(c.name)) { clinicName = c.name; break; }
+  }
+  // No match: extract prefix before item
+  if (!clinicName && foundItem && itemIdx > 0) {
+    const prefix = text.slice(0, itemIdx).replace(/[-_:·\s]+$/, '').trim();
+    if (prefix.length >= 2) clinicName = prefix;
+  }
+  if (!clinicName || !foundItem) return null;
+  return { name: clinicName, item: foundItem, qty, date };
+}
+
+function parseQuickInput() {
+  const raw = document.getElementById('quick-input-text').value.trim();
+  if (!raw) return;
+  const groups = parseDispatchText(raw);
+  renderQuickPreview(groups);
+}
+
+function renderQuickPreview(groups) {
+  window._quickRecords = groups;
+  const el = document.getElementById('quick-parse-result');
+  if (!groups.length) {
+    el.innerHTML = '<p style="color:var(--gray-400);margin:8px 0">인식된 내용이 없습니다. 거래선+품목이 포함된 텍스트를 붙여넣으세요.</p>';
+    return;
+  }
+  const newCount = groups.filter(g => g.isNew).length;
+  const rows = groups.map((g, i) => {
+    const clinicLabel = g.isNew
+      ? `${g.name}<span class="qp-new-badge">신규</span>`
+      : `${g.existingClinic?.name || g.name}`;
+    const itemsLabel = g.items.map(it => `${it.item}${it.qty > 1 ? ` ×${it.qty}` : ''}`).join(', ');
+    return `<tr>
+      <td>${clinicLabel}</td>
+      <td>${itemsLabel}</td>
+      <td style="white-space:nowrap">${g.date}</td>
+      <td><button onclick="removeQuickRecord(${i})" style="border:none;background:none;cursor:pointer;color:var(--gray-400);font-size:16px;line-height:1" title="제거">✕</button></td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="font-size:13px;color:var(--gray-600);margin-bottom:8px">
+      총 <strong>${groups.length}건</strong>${newCount ? ` · <span style="color:#92400e">신규 거래선 ${newCount}개 (마일리지 미적용으로 자동 등록)</span>` : ''}
+    </div>
+    <table class="qp-preview-table">
+      <thead><tr><th>거래선</th><th>발송 품목</th><th>날짜</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+      <button class="btn btn-outline" onclick="window._quickRecords=[];document.getElementById('quick-parse-result').innerHTML='';document.getElementById('quick-input-text').value=''">초기화</button>
+      <button class="btn btn-primary" onclick="saveQuickRecords()">✅ ${groups.length}건 저장</button>
+    </div>`;
+}
+
+function removeQuickRecord(i) {
+  window._quickRecords.splice(i, 1);
+  renderQuickPreview(window._quickRecords);
+}
+
+function saveQuickRecords() {
+  const groups = window._quickRecords;
+  if (!groups || !groups.length) return;
+  let newClinicCount = 0, newTxCount = 0;
+
+  groups.forEach(g => {
+    let clinic = g.existingClinic || findClinicByName(g.name);
+    if (!clinic) {
+      clinic = { id: uid(), name: g.name, branch: '', rate: 10, initialBalance: 0, regularPromos: [], noMileage: true };
+      clinics.push(clinic);
+      newClinicCount++;
+    }
+    // Skip duplicate (same clinic + date + first item)
+    const firstItem = g.items[0]?.item;
+    const isDup = transactions.find(t =>
+      t.clinicId === clinic.id && t.date === g.date && t.type === 'spend' &&
+      (t.items || []).some(i => i.name === firstItem)
+    );
+    if (isDup) return;
+
+    const txItems = g.items.map(it => {
+      const p = promoItems.find(x => x.name === it.item);
+      return { name: it.item, qty: it.qty, price: p?.price || 0, amount: 0 };
+    });
+    transactions.push({
+      id: uid(), clinicId: clinic.id, type: 'spend', amount: 0,
+      items: txItems, date: g.date, memo: '빠른 입력', createdAt: Date.now()
+    });
+    newTxCount++;
+  });
+
+  save();
+  window._quickRecords = [];
+  document.getElementById('quick-parse-result').innerHTML = '';
+  document.getElementById('quick-input-text').value = '';
+  toggleQuickPanel();
+  alert(`✅ 완료!\n발송 기록 ${newTxCount}건 저장${newClinicCount ? `\n신규 거래선 ${newClinicCount}개 등록` : ''}`);
+  if (document.querySelector('#page-promo-track.active')) renderPromoTrack();
+}
+
 // ===== INIT =====
 document.getElementById('dash-date').textContent = new Date().toLocaleDateString('ko-KR', { year:'numeric', month:'long', day:'numeric', weekday:'long' });
 renderDashboard();
 </script>
+
+<!-- ===== 빠른 발송 입력 패널 ===== -->
+<div id="quick-panel">
+  <div id="quick-panel-header" onclick="toggleQuickPanel()">
+    <span style="font-weight:600;font-size:14px">📋 빠른 발송 입력</span>
+    <span id="quick-panel-arrow">▲</span>
+  </div>
+  <div id="quick-panel-body">
+    <div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:12px;align-items:start">
+      <textarea id="quick-input-text" rows="4"
+        placeholder="구글시트 행을 복사하거나 자유 형식으로 입력하세요&#10;예) 살림치과  종이컵  1박스&#10;탭 구분 형식 (구글시트 복사)도 지원됩니다"
+        style="border:1px solid var(--gray-300);border-radius:6px;padding:10px;font-size:13px;resize:vertical;line-height:1.6;width:100%;box-sizing:border-box"
+        onkeydown="if(e&&e.ctrlKey&&e.key==='Enter')parseQuickInput()"></textarea>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button class="btn btn-primary" onclick="parseQuickInput()" style="padding:10px 14px;white-space:nowrap">분석</button>
+        <button class="btn btn-outline" onclick="toggleQuickPanel()" style="padding:6px 14px;white-space:nowrap;font-size:12px">닫기</button>
+      </div>
+    </div>
+    <div id="quick-parse-result"></div>
+  </div>
+</div>
+
 </body>
 </html>
