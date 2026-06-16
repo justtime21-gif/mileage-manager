@@ -349,10 +349,14 @@
             <div class="form-group">
               <label>거래선 선택</label>
               <div style="display:flex;gap:8px">
-                <select id="rx-clinic" onchange="updateRxRate()" style="flex:1">
+                <select id="rx-clinic" onchange="updateRxRate();showPrevRxBtn()" style="flex:1">
                   <option value="">거래선을 선택하세요</option>
                 </select>
                 <button class="btn btn-outline" style="white-space:nowrap" onclick="openClinicModalFromRx()">+ 신규 등록</button>
+              </div>
+              <div id="prev-rx-bar" style="display:none;margin-top:8px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;display:none;align-items:center;justify-content:space-between;gap:8px">
+                <span id="prev-rx-label" style="font-size:13px;color:#166534"></span>
+                <button class="btn btn-sm" onclick="loadPrevRx()" style="background:#16a34a;color:white;white-space:nowrap;flex-shrink:0">이전 처방 불러오기</button>
               </div>
             </div>
           </div>
@@ -1253,6 +1257,43 @@ function updateRxRate() {
   calcRxTotal();
 }
 
+function showPrevRxBtn() {
+  const clinicId = document.getElementById('rx-clinic').value;
+  const bar = document.getElementById('prev-rx-bar');
+  if (!clinicId) { bar.style.display = 'none'; return; }
+  const prev = transactions
+    .filter(t => t.clinicId === clinicId && t.type === 'earn')
+    .sort((a, b) => b.createdAt - a.createdAt)[0];
+  if (!prev || !(prev.items || []).length) { bar.style.display = 'none'; return; }
+  const c = clinics.find(x => x.id === clinicId);
+  const period = prev.rxStart && prev.rxEnd
+    ? `${prev.rxStart.slice(5).replace('-','.')}~${prev.rxEnd.slice(5).replace('-','.')}`
+    : prev.date || '';
+  document.getElementById('prev-rx-label').textContent =
+    `📋 이전: ${period} | ${prev.items.map(i => `${i.name.split('(')[0]} ×${fmtNum(i.qty||1)}`).join(', ')}`;
+  bar.style.display = 'flex';
+}
+
+function loadPrevRx() {
+  const clinicId = document.getElementById('rx-clinic').value;
+  if (!clinicId) return;
+  const prev = transactions
+    .filter(t => t.clinicId === clinicId && t.type === 'earn')
+    .sort((a, b) => b.createdAt - a.createdAt)[0];
+  if (!prev || !(prev.items || []).length) return;
+  if (!confirm(`이전 처방 품목을 불러옵니다.\n현재 입력 내용이 초기화됩니다.\n계속하시겠습니까?`)) return;
+  rxItems = prev.items.map(it => ({
+    id: uid(),
+    drugId: it.drugId || '',
+    name: it.name || '',
+    qty: String(it.qty || ''),
+    price: String(it.price || '')
+  }));
+  if (!rxItems.length) { addRxItem(); addRxItem(); addRxItem(); }
+  renderRxItemRows();
+  calcRxTotal();
+}
+
 function addRxItem() {
   rxItems.push({ id: uid(), drugId: '', name: '', qty: '', price: '' });
   renderRxItemRows();
@@ -1504,14 +1545,23 @@ function applyOcrResult(text) {
     usedLines.add(m.lineIdx);
     usedDrugs.add(m.drug.id);
 
-    // 수량 추출: 보험코드(7자리 이상)·퍼센트 제거 후 마지막 숫자 = 총 처방량
+    // 수량 추출: 보험코드·퍼센트·소수 제거 후 원외처방통계 표 패턴으로 총처방량 추출
+    // 표 컬럼: 단가 | 급여처방횟수 | 급여처방량 | 비급여횟수 | 비급여처방량 | 총처방횟수 | 총처방량 | 횟수비율% | 처방량비율%
+    // 급여처방량 == 총처방량 (비급여 없을 때) → 같은 숫자가 2번 등장하는 패턴 활용
     const cleaned = m.line.replace(/,/g, '')
-      .replace(/\d{7,}/g, ' ')
-      .replace(/\d+(\.\d+)?\s*%/g, ' ');
-    const nums = (cleaned.match(/\d+(\.\d+)?/g) || []).map(Number);
+      .replace(/\d{7,}/g, ' ')           // 보험코드 제거
+      .replace(/\d+\.\d+\s*%?/g, ' ')   // 소수+% 제거 (비율 컬럼: 18.4%, 0.9% 등)
+      .replace(/\d+\s*%/g, ' ');         // 정수% 제거
+    const nums = (cleaned.match(/\d+/g) || []).map(Number);
     let qty = '';
-    const candidates = nums.filter(n => n !== m.drug.price && n > 0 && n < 100000 && Number.isInteger(n));
-    if (candidates.length) qty = candidates[candidates.length - 1];
+    const candidates = nums.filter(n => n !== m.drug.price && n > 0 && n < 100000);
+    if (candidates.length) {
+      // 2회 이상 등장하는 숫자 중 가장 큰 값 = 총처방량 (급여처방량과 일치)
+      const freq = {};
+      candidates.forEach(n => { freq[n] = (freq[n] || 0) + 1; });
+      const repeated = candidates.filter(n => freq[n] >= 2);
+      qty = repeated.length ? Math.max(...repeated) : Math.max(...candidates);
+    }
     found.push({ drug: m.drug, qty });
   });
 
