@@ -541,7 +541,10 @@
           <h2>판촉물 목록</h2>
           <p>구매 가능한 판촉물 품목 및 가격 관리</p>
         </div>
-        <button class="btn btn-primary" onclick="openPromoModal()">+ 품목 추가</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-outline" onclick="savePromoListImage()">🖼️ 이미지 저장</button>
+          <button class="btn btn-primary" onclick="openPromoModal()">+ 품목 추가</button>
+        </div>
       </div>
       <div class="card">
         <div class="table-wrap">
@@ -2109,6 +2112,138 @@ function deleteRxDrug(id) {
 
 // ===== PROMO ITEMS =====
 let editingPromoId = null;
+
+function savePromoListImage() {
+  const W = 820;
+  const scale = 2;
+  const F = "'Apple SD Gothic Neo','Malgun Gothic',sans-serif";
+
+  const sorted = [...promoItems].sort((a, b) =>
+    (a.category || '기타').localeCompare(b.category || '기타') || a.name.localeCompare(b.name)
+  );
+  const catOrder = ['소모품', '치과용품', '약제', '선물세트'];
+  const groups = {};
+  catOrder.forEach(c => { groups[c] = []; });
+  sorted.forEach(p => {
+    const cat = p.category || '기타';
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(p);
+  });
+  Object.keys(groups).forEach(k => { if (!groups[k].length) delete groups[k]; });
+
+  const HEADER_H = 110;
+  const CAT_H = 42;
+  const ROW_H = 38;
+  const FOOTER_H = 52;
+  const PAD = 16;
+
+  const totalCats = Object.keys(groups).length;
+  const totalItems = sorted.length;
+  const H = HEADER_H + totalCats * CAT_H + totalItems * ROW_H + PAD * totalCats + FOOTER_H + 24;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W * scale;
+  canvas.height = H * scale;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+
+  // white bg
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+
+  // header bg
+  const grad = ctx.createLinearGradient(0, 0, W, 0);
+  grad.addColorStop(0, '#065f46');
+  grad.addColorStop(1, '#059669');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, HEADER_H);
+
+  // title
+  ctx.font = `bold 26px ${F}`;
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'left';
+  ctx.fillText('판촉물 주문 목록', 36, 48);
+  ctx.font = `14px ${F}`;
+  ctx.fillStyle = '#a7f3d0';
+  ctx.fillText('주문 가능 품목 및 가격 안내 (VAT 포함)', 36, 74);
+  ctx.font = `13px ${F}`;
+  ctx.fillStyle = '#6ee7b7';
+  const d = new Date();
+  ctx.fillText(`${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 기준`, 36, 97);
+
+  let y = HEADER_H + 14;
+
+  Object.entries(groups).forEach(([cat, items]) => {
+    // category header
+    ctx.fillStyle = '#f0fdf4';
+    ctx.fillRect(0, y, W, CAT_H);
+    ctx.fillStyle = '#059669';
+    ctx.fillRect(0, y, 6, CAT_H);
+    ctx.font = `bold 15px ${F}`;
+    ctx.fillStyle = '#064e3b';
+    ctx.textAlign = 'left';
+    ctx.fillText(cat, 24, y + 27);
+    y += CAT_H;
+
+    // column header
+    ctx.fillStyle = '#f9fafb';
+    ctx.fillRect(0, y, W, 30);
+    ctx.font = `12px ${F}`;
+    ctx.fillStyle = '#6b7280';
+    ctx.textAlign = 'left';
+    ctx.fillText('품목명', 40, y + 20);
+    ctx.textAlign = 'right';
+    ctx.fillText('단가 (VAT 포함)', W - 36, y + 20);
+    y += 30;
+
+    items.forEach((p, i) => {
+      ctx.fillStyle = i % 2 === 0 ? '#ffffff' : '#f9fafb';
+      ctx.fillRect(0, y, W, ROW_H);
+
+      ctx.font = `14px ${F}`;
+      ctx.fillStyle = '#111827';
+      ctx.textAlign = 'left';
+      ctx.fillText(p.name, 40, y + 25);
+
+      ctx.font = `bold 14px ${F}`;
+      ctx.fillStyle = '#059669';
+      ctx.textAlign = 'right';
+      ctx.fillText(fmtNum(p.price) + '원', W - 36, y + 25);
+
+      ctx.strokeStyle = '#f3f4f6';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(0, y + ROW_H);
+      ctx.lineTo(W, y + ROW_H);
+      ctx.stroke();
+
+      y += ROW_H;
+    });
+
+    y += PAD;
+  });
+
+  // footer
+  y += 4;
+  ctx.fillStyle = '#f9fafb';
+  ctx.fillRect(0, y, W, FOOTER_H);
+  ctx.strokeStyle = '#e5e7eb';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, y);
+  ctx.lineTo(W, y);
+  ctx.stroke();
+  ctx.font = `12px ${F}`;
+  ctx.fillStyle = '#9ca3af';
+  ctx.textAlign = 'center';
+  ctx.fillText('※ 가격은 부가세(VAT) 포함 기준이며, 재고 상황에 따라 변경될 수 있습니다.', W / 2, y + 30);
+
+  const link = document.createElement('a');
+  const dateStr = today();
+  link.download = `판촉물목록_${dateStr}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
 
 function renderPromoItems() {
   const tbody = document.getElementById('promo-table-body');
