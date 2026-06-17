@@ -542,6 +542,7 @@
           <p>구매 가능한 판촉물 품목 및 가격 관리</p>
         </div>
         <div style="display:flex;gap:8px">
+          <button class="btn btn-accent" onclick="copyPromoListImage()">📋 이미지 복사</button>
           <button class="btn btn-outline" onclick="savePromoListImage()">🖼️ 이미지 저장</button>
           <button class="btn btn-primary" onclick="openPromoModal()">+ 품목 추가</button>
         </div>
@@ -2114,7 +2115,7 @@ function deleteRxDrug(id) {
 // ===== PROMO ITEMS =====
 let editingPromoId = null;
 
-function savePromoListImage() {
+function buildPromoListCanvas() {
   const W = 820;
   const scale = 2;
   const F = "'Apple SD Gothic Neo','Malgun Gothic',sans-serif";
@@ -2132,15 +2133,10 @@ function savePromoListImage() {
   });
   Object.keys(groups).forEach(k => { if (!groups[k].length) delete groups[k]; });
 
-  const HEADER_H = 110;
-  const CAT_H = 42;
-  const ROW_H = 38;
-  const FOOTER_H = 52;
-  const PAD = 16;
-
+  const HEADER_H = 110, CAT_H = 42, ROW_H = 38, FOOTER_H = 52, PAD = 16;
   const totalCats = Object.keys(groups).length;
   const totalItems = sorted.length;
-  const H = HEADER_H + totalCats * CAT_H + totalItems * ROW_H + PAD * totalCats + FOOTER_H + 24;
+  const H = HEADER_H + totalCats * (CAT_H + 30) + totalItems * ROW_H + PAD * totalCats + FOOTER_H + 24;
 
   const canvas = document.createElement('canvas');
   canvas.width = W * scale;
@@ -2148,18 +2144,15 @@ function savePromoListImage() {
   const ctx = canvas.getContext('2d');
   ctx.scale(scale, scale);
 
-  // white bg
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, W, H);
 
-  // header bg
   const grad = ctx.createLinearGradient(0, 0, W, 0);
   grad.addColorStop(0, '#065f46');
   grad.addColorStop(1, '#059669');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, HEADER_H);
 
-  // title
   ctx.font = `bold 26px ${F}`;
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'left';
@@ -2175,7 +2168,6 @@ function savePromoListImage() {
   let y = HEADER_H + 14;
 
   Object.entries(groups).forEach(([cat, items]) => {
-    // category header
     ctx.fillStyle = '#f0fdf4';
     ctx.fillRect(0, y, W, CAT_H);
     ctx.fillStyle = '#059669';
@@ -2186,7 +2178,6 @@ function savePromoListImage() {
     ctx.fillText(cat, 24, y + 27);
     y += CAT_H;
 
-    // column header
     ctx.fillStyle = '#f9fafb';
     ctx.fillRect(0, y, W, 30);
     ctx.font = `12px ${F}`;
@@ -2200,31 +2191,26 @@ function savePromoListImage() {
     items.forEach((p, i) => {
       ctx.fillStyle = i % 2 === 0 ? '#ffffff' : '#f9fafb';
       ctx.fillRect(0, y, W, ROW_H);
-
       ctx.font = `14px ${F}`;
       ctx.fillStyle = '#111827';
       ctx.textAlign = 'left';
       ctx.fillText(p.name, 40, y + 25);
-
       ctx.font = `bold 14px ${F}`;
       ctx.fillStyle = '#059669';
       ctx.textAlign = 'right';
       ctx.fillText(fmtNum(p.price) + '원', W - 36, y + 25);
-
       ctx.strokeStyle = '#f3f4f6';
       ctx.lineWidth = 0.5;
       ctx.beginPath();
       ctx.moveTo(0, y + ROW_H);
       ctx.lineTo(W, y + ROW_H);
       ctx.stroke();
-
       y += ROW_H;
     });
 
     y += PAD;
   });
 
-  // footer
   y += 4;
   ctx.fillStyle = '#f9fafb';
   ctx.fillRect(0, y, W, FOOTER_H);
@@ -2239,11 +2225,32 @@ function savePromoListImage() {
   ctx.textAlign = 'center';
   ctx.fillText('※ 가격은 부가세(VAT) 포함 기준이며, 재고 상황에 따라 변경될 수 있습니다.', W / 2, y + 30);
 
+  return canvas;
+}
+
+function savePromoListImage() {
+  const canvas = buildPromoListCanvas();
   const link = document.createElement('a');
-  const dateStr = today();
-  link.download = `판촉물목록_${dateStr}.png`;
+  link.download = `판촉물목록_${today()}.png`;
   link.href = canvas.toDataURL('image/png');
   link.click();
+}
+
+async function copyPromoListImage() {
+  const canvas = buildPromoListCanvas();
+  try {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        'image/png': new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
+      })
+    ]);
+    alert('✅ 이미지가 복사되었습니다.\n카톡 채팅창에 붙여넣기(Cmd+V) 하세요.');
+  } catch (e) {
+    const url = canvas.toDataURL('image/png');
+    const w = window.open('', '_blank');
+    w.document.write(`<img src="${url}" style="max-width:100%"><p style="font-family:sans-serif;color:#666">이미지를 길게 눌러(또는 우클릭) 복사하세요</p>`);
+    w.document.close();
+  }
 }
 
 function renderPromoItems() {
