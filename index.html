@@ -774,6 +774,7 @@
       <button class="btn btn-outline" onclick="copyReportText()">📝 텍스트 복사</button>
       <button class="btn btn-accent" onclick="copyReportImage()">📋 이미지 복사</button>
       <button class="btn btn-primary" onclick="downloadReportImage()">💾 이미지 저장</button>
+      <button class="btn btn-outline" onclick="savePromoListImage()" style="border-color:#059669;color:#059669">🖼️ 판촉물 목록</button>
     </div>
   </div>
 </div>
@@ -2525,13 +2526,23 @@ function downloadReportImage() {
   }, 'image/png');
 }
 
-function copyReportImage() {
+async function copyReportImage() {
   const canvas = document.getElementById('report-canvas');
-  canvas.toBlob(blob => {
-    navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-      .then(() => alert('✅ 이미지가 복사되었습니다.\n카톡 채팅창에 붙여넣기(Cmd+V) 하세요.'))
-      .catch(() => alert('이미지 복사에 실패했습니다. "이미지 저장"을 이용해 주세요.'));
-  }, 'image/png');
+  try {
+    // Safari는 ClipboardItem에 Promise를 직접 전달해야 user gesture 체인 유지됨
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        'image/png': new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
+      })
+    ]);
+    alert('✅ 이미지가 복사되었습니다.\n카톡 채팅창에 붙여넣기(Cmd+V) 하세요.');
+  } catch (e) {
+    // 폴백: 이미지를 새 탭으로 열어 수동 복사 안내
+    const url = canvas.toDataURL('image/png');
+    const w = window.open('', '_blank');
+    w.document.write(`<img src="${url}" style="max-width:100%"><p style="font-family:sans-serif;color:#666">이미지를 길게 눌러(또는 우클릭) 복사하세요</p>`);
+    w.document.close();
+  }
 }
 
 function copyReportText() {
