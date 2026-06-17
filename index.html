@@ -2295,10 +2295,15 @@ function renderReport() {
     y += rowH;
   }
 
+  // 보고서 표시용 약품명 축약: 긴 클로르헥시딘 이름 → CHX액(100mL) 형식
+  function dispName(n) {
+    return n.replace('클로르헥시딘액0.12%(클로르헥시딘글루콘산염액', 'CHX액(');
+  }
+
   drawRow(cols.map(c => c.label), '#4472c4', '#ffffff', true);
   if (d.items.length) {
     d.items.forEach(it => drawRow(
-      [it.name, fmtNum(it.qty), fmtNum(it.price), fmtNum(it.amount), fmtNum(it.mileage)],
+      [dispName(it.name), fmtNum(it.qty), fmtNum(it.price), fmtNum(it.amount), fmtNum(it.mileage)],
       '#ffffff', '#111827', false
     ));
   } else {
