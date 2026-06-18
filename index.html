@@ -1155,10 +1155,33 @@ function renderClinics(filter = '', sort = '') {
   if (sortVal === 'balance-asc') list.sort((a, b) => getClinicBalance(a.id).balance - getClinicBalance(b.id).balance);
 
   const tbody = document.getElementById('clinic-table-body');
-  tbody.innerHTML = list.length ? list.map(c => {
+
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-icon">🏥</div><p>등록된 거래선이 없습니다</p></div></td></tr>`;
+    return;
+  }
+
+  const group1 = list.filter(c => !c.noMileage);
+  const group2 = list.filter(c => c.noMileage);
+
+  const renderRow = c => {
     const { earned, spent, balance, initial } = getClinicBalance(c.id);
     const totalRx = getClinicTotalRx(c.id);
     const balColor = balance < 0 ? 'var(--danger)' : 'var(--primary)';
+    if (c.noMileage) {
+      return `<tr>
+        <td><strong>${c.name}</strong>${c.branch ? ` <span class="text-sm">(${c.branch})</span>` : ''}</td>
+        <td><span class="badge badge-gray" style="color:#6b7280;background:#f3f4f6">미적용</span></td>
+        <td class="td-num" style="color:var(--gray-300)">—</td>
+        <td class="td-num" style="color:var(--gray-300)">—</td>
+        <td class="td-num" style="color:var(--gray-300)">—</td>
+        <td class="td-num" style="color:var(--gray-300)">—</td>
+        <td>
+          <button class="btn btn-outline btn-sm" onclick="editClinic('${c.id}')">수정</button>
+          <button class="btn btn-outline btn-sm" style="margin-left:4px;color:var(--danger)" onclick="deleteClinic('${c.id}')">삭제</button>
+        </td>
+      </tr>`;
+    }
     return `<tr>
       <td><strong>${c.name}</strong>${c.branch ? ` <span class="text-sm">(${c.branch})</span>` : ''}</td>
       <td><span class="badge badge-green">${c.rate}%</span></td>
@@ -1172,7 +1195,25 @@ function renderClinics(filter = '', sort = '') {
         <button class="btn btn-outline btn-sm" style="margin-left:4px;color:var(--danger)" onclick="deleteClinic('${c.id}')">삭제</button>
       </td>
     </tr>`;
-  }).join('') : `<tr><td colspan="7"><div class="empty"><div class="empty-icon">🏥</div><p>등록된 거래선이 없습니다</p></div></td></tr>`;
+  };
+
+  let html = '';
+  if (group1.length) {
+    html += `<tr><td colspan="7" style="padding:10px 16px;background:#f0fdf4;border-top:2px solid #059669;border-bottom:1px solid #d1fae5">
+      <span style="font-weight:700;font-size:13px;color:#065f46">① 마일리지 적립·차감 관리</span>
+      <span style="font-size:12px;color:#6b7280;margin-left:8px">${group1.length}개 거래선</span>
+    </td></tr>`;
+    html += group1.map(renderRow).join('');
+  }
+  if (group2.length) {
+    html += `<tr><td colspan="7" style="padding:10px 16px;background:#f5f3ff;border-top:2px solid #7c3aed;border-bottom:1px solid #ddd6fe;${group1.length ? 'margin-top:8px' : ''}">
+      <span style="font-weight:700;font-size:13px;color:#5b21b6">② 판촉물 발송 (마일리지 미적용)</span>
+      <span style="font-size:12px;color:#6b7280;margin-left:8px">${group2.length}개 거래선</span>
+    </td></tr>`;
+    html += group2.map(renderRow).join('');
+  }
+
+  tbody.innerHTML = html;
 }
 
 function filterClinics(val) { renderClinics(val); }
