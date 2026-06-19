@@ -339,6 +339,7 @@
         </div>
         <button class="btn btn-primary" onclick="navigate('prescriptions')">+ 처방 입력</button>
       </div>
+      <div id="dash-order-schedule" style="margin-bottom:12px"></div>
       <div class="stats-grid" id="dash-stats"></div>
       <div class="card" style="margin-top:4px">
         <div style="text-align:center;margin-bottom:16px">
@@ -646,6 +647,7 @@
       <!-- 설정 탭 -->
       <div style="display:flex;gap:0;border-bottom:2px solid var(--gray-200);margin-bottom:20px;overflow-x:auto">
         <button id="stab-data"       class="stab active" onclick="showSettingsTab('data')">💾 데이터 관리</button>
+        <button id="stab-schedule"   class="stab"        onclick="showSettingsTab('schedule')">📅 신청일정</button>
         <button id="stab-rx-drugs"   class="stab"        onclick="showSettingsTab('rx-drugs')">💊 처방약품</button>
         <button id="stab-promo"      class="stab"        onclick="showSettingsTab('promo')">📦 판촉물 목록</button>
         <button id="stab-admin"      class="stab"        onclick="showSettingsTab('admin')">👤 관리자</button>
@@ -669,6 +671,28 @@
               </div>
               <button class="btn btn-outline" onclick="document.getElementById('import-modal').classList.add('open')" style="flex-shrink:0;margin-left:16px">가져오기</button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 탭: 신청일정 -->
+      <div id="stab-panel-schedule" style="display:none">
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-title" style="margin-bottom:16px">📅 판촉물 신청일 관리</div>
+          <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap">
+            <input type="date" id="order-date-input" style="border:1px solid var(--gray-300);border-radius:8px;padding:8px 12px;font-size:14px">
+            <button class="btn btn-primary" onclick="addOrderDate()">+ 날짜 추가</button>
+          </div>
+          <div id="order-date-list" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:12px">🔗 판촉물 신청 구글시트 링크</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input type="url" id="promo-sheet-url" placeholder="https://docs.google.com/spreadsheets/..."
+              style="flex:1;min-width:200px;border:1px solid var(--gray-300);border-radius:8px;padding:8px 12px;font-size:14px"
+              value="">
+            <button class="btn btn-primary" onclick="savePromoSheetUrl()">저장</button>
+            <a id="promo-sheet-link" href="#" target="_blank" class="btn btn-outline" style="display:none">열기 →</a>
           </div>
         </div>
       </div>
@@ -955,12 +979,14 @@ migrateBrochureDrugs();
 let promoItems = DB.get('promoItems', getDefaultPromoItems());
 migrateCombinedPromoItems();
 let transactions = DB.get('transactions', []);
+let appSettings = DB.get('appSettings', { orderDates: [], promoSheetUrl: '' });
 
 function save() {
   DB.set('clinics', clinics);
   DB.set('rxDrugs', rxDrugs);
   DB.set('promoItems', promoItems);
   DB.set('transactions', transactions);
+  DB.set('appSettings', appSettings);
 }
 
 // 슬래시로 묶여 있던 판촉물을 개별 품목으로 분리 (기존 저장 데이터 1회 마이그레이션)
@@ -1194,14 +1220,117 @@ function navigate(page) {
   if (page === 'promo-items') renderPromoItems();
   if (page === 'history') { renderHistoryFilters(); renderHistory(); }
   if (page === 'promo-track') renderPromoTrack();
-  if (page === 'settings') { renderRxDrugs(); renderPromoItems(); }
+  if (page === 'settings') { renderRxDrugs(); renderPromoItems(); renderOrderDateList(); }
 }
 
 function showSettingsTab(tab) {
-  ['data', 'rx-drugs', 'promo', 'admin'].forEach(t => {
+  ['data', 'schedule', 'rx-drugs', 'promo', 'admin'].forEach(t => {
     document.getElementById('stab-' + t).classList.toggle('active', t === tab);
     document.getElementById('stab-panel-' + t).style.display = t === tab ? '' : 'none';
   });
+  if (tab === 'schedule') renderOrderDateList();
+}
+
+// ===== 판촉물 신청 일정 =====
+function renderOrderSchedule() {
+  const el = document.getElementById('dash-order-schedule');
+  if (!el) return;
+  const dates = (appSettings.orderDates || []).map(d => ({ d, diff: dayDiff(d) })).sort((a, b) => a.diff - b.diff);
+  const url = appSettings.promoSheetUrl || '';
+
+  if (!dates.length) { el.innerHTML = ''; return; }
+
+  const chips = dates.map(({ d, diff }) => {
+    const label = fmtOrderDate(d);
+    let bg, color, badge;
+    if (diff < 0)       { bg = '#f3f4f6'; color = '#9ca3af'; badge = '마감'; }
+    else if (diff === 0){ bg = '#fef2f2'; color = '#dc2626'; badge = '오늘 마감!'; }
+    else if (diff <= 3) { bg = '#fff7ed'; color = '#ea580c'; badge = `D-${diff} 긴급`; }
+    else if (diff <= 7) { bg = '#fefce8'; color = '#ca8a04'; badge = `D-${diff}`; }
+    else                { bg = '#f0fdf4'; color = '#16a34a'; badge = `D-${diff}`; }
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:${bg};border-radius:10px;flex:1;min-width:140px">
+      <span style="font-size:20px">📅</span>
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:14px;color:#111">${label}</div>
+        <div style="font-size:12px;font-weight:700;color:${color};margin-top:1px">${badge}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const sheetBtn = url
+    ? `<a href="${url}" target="_blank" class="btn btn-outline" style="white-space:nowrap;font-size:13px">📋 신청 시트 →</a>`
+    : `<button class="btn btn-outline" style="font-size:13px;color:var(--gray-400)" onclick="navigate('settings');showSettingsTab('schedule')">링크 설정</button>`;
+
+  // 오늘 마감 or D-3 이하 항목이 있으면 헤더 강조
+  const urgent = dates.some(({ diff }) => diff >= 0 && diff <= 3);
+  el.innerHTML = `
+    <div style="border:2px solid ${urgent ? '#f97316' : 'var(--gray-200)'};border-radius:12px;padding:14px;background:white">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <span style="font-weight:700;font-size:15px;color:${urgent ? '#ea580c' : 'var(--gray-800)'}">
+          ${urgent ? '⚠️ 판촉물 신청 마감 임박!' : '📦 판촉물 신청 일정'}
+        </span>
+        ${sheetBtn}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${chips}</div>
+    </div>`;
+}
+
+function dayDiff(dateStr) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const target = new Date(dateStr); target.setHours(0,0,0,0);
+  return Math.round((target - today) / 86400000);
+}
+
+function fmtOrderDate(dateStr) {
+  const d = new Date(dateStr);
+  const days = ['일','월','화','수','목','금','토'];
+  return `${d.getMonth()+1}월 ${d.getDate()}일 (${days[d.getDay()]})`;
+}
+
+function renderOrderDateList() {
+  const dates = [...(appSettings.orderDates || [])].sort();
+  document.getElementById('order-date-list').innerHTML = dates.length
+    ? dates.map(d => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border:1px solid var(--gray-200);border-radius:8px">
+          <span style="font-weight:600">${fmtOrderDate(d)}</span>
+          <button onclick="removeOrderDate('${d}')" style="border:none;background:none;cursor:pointer;color:var(--danger);font-size:18px">✕</button>
+        </div>`).join('')
+    : '<p style="color:var(--gray-400);font-size:14px">등록된 날짜가 없습니다.</p>';
+  const url = appSettings.promoSheetUrl || '';
+  document.getElementById('promo-sheet-url').value = url;
+  const linkEl = document.getElementById('promo-sheet-link');
+  if (url) { linkEl.href = url; linkEl.style.display = ''; }
+  else linkEl.style.display = 'none';
+}
+
+function addOrderDate() {
+  const val = document.getElementById('order-date-input').value;
+  if (!val) return alert('날짜를 선택하세요.');
+  if (!(appSettings.orderDates || []).includes(val)) {
+    appSettings.orderDates = [...(appSettings.orderDates || []), val];
+    DB.set('appSettings', appSettings);
+  }
+  document.getElementById('order-date-input').value = '';
+  renderOrderDateList();
+  renderOrderSchedule();
+}
+
+function removeOrderDate(d) {
+  appSettings.orderDates = (appSettings.orderDates || []).filter(x => x !== d);
+  DB.set('appSettings', appSettings);
+  renderOrderDateList();
+  renderOrderSchedule();
+}
+
+function savePromoSheetUrl() {
+  const url = document.getElementById('promo-sheet-url').value.trim();
+  appSettings.promoSheetUrl = url;
+  DB.set('appSettings', appSettings);
+  const linkEl = document.getElementById('promo-sheet-link');
+  if (url) { linkEl.href = url; linkEl.style.display = ''; }
+  else linkEl.style.display = 'none';
+  renderOrderSchedule();
+  alert('✅ 링크가 저장됐습니다.');
 }
 
 // ===== DASHBOARD =====
@@ -1221,6 +1350,7 @@ function renderDashboard() {
     <div class="stat-card"><div class="stat-label">총 차감액</div><div class="stat-value" style="font-size:20px;color:var(--danger)">${fmt(totalSpent)}</div><div class="stat-sub">누적 판촉물</div></div>
   `;
 
+  renderOrderSchedule();
 }
 
 // ===== CLINICS =====
