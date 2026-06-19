@@ -211,6 +211,82 @@
     .main { margin-left: 64px; padding: 16px; }
     #quick-panel { left: 64px; }
   }
+
+  @media (max-width: 640px) {
+    /* 사이드바 → 하단 탭 바 */
+    .sidebar {
+      position: fixed;
+      bottom: 0; top: auto; left: 0; right: 0;
+      width: 100%; height: 60px;
+      flex-direction: row;
+      border-right: none;
+      border-top: 1px solid var(--gray-200);
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      z-index: 200;
+    }
+    .sidebar-logo { display: none; }
+    nav {
+      display: flex; flex-direction: row;
+      width: 100%; padding: 0; overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .nav-item {
+      flex: 0 0 auto; min-width: 62px;
+      flex-direction: column; justify-content: center; align-items: center;
+      padding: 4px 6px; gap: 1px;
+      border-left: none; border-top: 3px solid transparent;
+    }
+    .nav-item.active { border-left: none; border-top: 3px solid var(--primary); background: var(--primary-light); }
+    .nav-item span:not(.nav-icon) { display: block; font-size: 10px; color: var(--gray-600); }
+    .nav-item.active span:not(.nav-icon) { color: var(--primary-dark); }
+    .nav-icon { font-size: 18px; width: auto; }
+
+    /* 메인 콘텐츠 */
+    .main { margin-left: 0; padding: 10px; padding-bottom: 70px; }
+    #quick-panel { left: 0; }
+
+    /* 통계 그리드 */
+    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .stat-card { padding: 12px; }
+    .stat-card .stat-value { font-size: 20px; }
+
+    /* 카드 */
+    .card { padding: 12px; }
+    .page-header { margin-bottom: 12px; }
+    .page-header.flex.justify-between { flex-wrap: wrap; gap: 8px; }
+
+    /* 테이블 */
+    table { font-size: 12px; }
+    th, td { padding: 7px 6px; }
+    .btn-sm { padding: 3px 6px; font-size: 11px; min-height: 28px; }
+
+    /* 폼 */
+    .form-row { grid-template-columns: 1fr !important; gap: 10px; }
+    input[type="text"], input[type="number"], input[type="date"],
+    input[type="month"], select, textarea { font-size: 16px !important; } /* iOS 자동 확대 방지 */
+
+    /* 버튼 터치 영역 */
+    .btn { min-height: 40px; }
+
+    /* 모달 — 하단 시트 */
+    .modal-overlay { align-items: flex-end; padding: 0; }
+    .modal {
+      width: 100%; max-width: 100%;
+      max-height: 92vh;
+      border-radius: 16px 16px 0 0;
+      margin: 0;
+    }
+    .modal-footer { flex-wrap: wrap; gap: 6px; }
+    .modal-footer .btn { flex: 1; min-width: 80px; }
+
+    /* 판촉물 그리드 */
+    .promo-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 8px; }
+    .promo-card { padding: 10px; }
+    .promo-name { font-size: 12px; }
+    .promo-price { font-size: 14px; }
+  }
+
   #quick-panel {
     position: fixed; bottom: 0; left: 220px; right: 0; z-index: 200;
     transform: translateY(calc(100% - 42px));
@@ -1161,8 +1237,9 @@ function renderClinics(filter = '', sort = '') {
     return;
   }
 
-  const group1 = list.filter(c => !c.noMileage);
-  const group2 = list.filter(c => c.noMileage);
+  const group1 = list.filter(c => !c.noMileage && !c.dualTrack);
+  const group2 = list.filter(c => c.dualTrack && !c.noMileage);
+  const group3 = list.filter(c => c.noMileage);
 
   const renderRow = c => {
     const { earned, spent, balance, initial } = getClinicBalance(c.id);
@@ -1197,20 +1274,24 @@ function renderClinics(filter = '', sort = '') {
     </tr>`;
   };
 
+  const catHeader = (num, label, color, bg, border, count) =>
+    `<tr><td colspan="7" style="padding:10px 16px;background:${bg};border-top:2px solid ${border};border-bottom:1px solid ${border}40">
+      <span style="font-weight:700;font-size:13px;color:${color}">${num} ${label}</span>
+      <span style="font-size:12px;color:#6b7280;margin-left:8px">${count}개 거래선</span>
+    </td></tr>`;
+
   let html = '';
   if (group1.length) {
-    html += `<tr><td colspan="7" style="padding:10px 16px;background:#f0fdf4;border-top:2px solid #059669;border-bottom:1px solid #d1fae5">
-      <span style="font-weight:700;font-size:13px;color:#065f46">① 마일리지 적립·차감 관리</span>
-      <span style="font-size:12px;color:#6b7280;margin-left:8px">${group1.length}개 거래선</span>
-    </td></tr>`;
+    html += catHeader('①', '마일리지 적립·차감 관리', '#065f46', '#f0fdf4', '#059669', group1.length);
     html += group1.map(renderRow).join('');
   }
   if (group2.length) {
-    html += `<tr><td colspan="7" style="padding:10px 16px;background:#f5f3ff;border-top:2px solid #7c3aed;border-bottom:1px solid #ddd6fe;${group1.length ? 'margin-top:8px' : ''}">
-      <span style="font-weight:700;font-size:13px;color:#5b21b6">② 판촉물 발송 (마일리지 미적용)</span>
-      <span style="font-size:12px;color:#6b7280;margin-left:8px">${group2.length}개 거래선</span>
-    </td></tr>`;
+    html += catHeader('②', '마일리지 적립 + 정기 판촉물 병행 (판촉물 차감 없음)', '#1e40af', '#eff6ff', '#3b82f6', group2.length);
     html += group2.map(renderRow).join('');
+  }
+  if (group3.length) {
+    html += catHeader('③', '판촉물 발송 (마일리지 미적용)', '#5b21b6', '#f5f3ff', '#7c3aed', group3.length);
+    html += group3.map(renderRow).join('');
   }
 
   tbody.innerHTML = html;
@@ -1836,10 +1917,12 @@ function updateRedeemBalance() {
   const c = clinics.find(x => x.id === clinicId);
   const { balance } = getClinicBalance(clinicId);
   info.style.display = 'block';
-  document.getElementById('redeem-clinic-name').textContent = c.name + (c.noMileage ? ' 〔마일리지 미적용〕' : '');
+  const noDeduct = c.noMileage || c.dualTrack;
+  const label = c.noMileage ? ' 〔마일리지 미적용〕' : c.dualTrack ? ' 〔정기 판촉물 — 잔액 차감 없음〕' : '';
+  document.getElementById('redeem-clinic-name').textContent = c.name + label;
   const balEl = document.getElementById('redeem-balance-display');
-  if (c.noMileage) {
-    balEl.textContent = '발송 기록만 저장 (잔액 차감 없음)';
+  if (noDeduct) {
+    balEl.textContent = c.noMileage ? '발송 기록만 저장 (잔액 차감 없음)' : `잔액: ${fmt(balance)} (판촉물 발송은 차감 없음)`;
     balEl.style.color = 'var(--gray-500)';
   } else {
     balEl.textContent = fmt(balance);
@@ -2001,21 +2084,36 @@ function removeCustomRedeem(id) {
 }
 
 function calcRedeemTotal() {
-  let total = 0;
+  const clinicId = document.getElementById('redeem-clinic').value;
+  const c = clinicId ? clinics.find(x => x.id === clinicId) : null;
+  const regularPromos = (c?.dualTrack && c?.regularPromos) ? c.regularPromos : [];
+
+  let total = 0, deductTotal = 0;
   Object.entries(selectedPromoItems).forEach(([id, qty]) => {
     const p = promoItems.find(x => x.id === id);
-    if (p) total += p.price * qty;
+    if (!p) return;
+    const amount = p.price * qty;
+    total += amount;
+    const isRegular = regularPromos.some(rp => p.name.includes(rp) || rp.includes(p.name));
+    if (!isRegular) deductTotal += amount;
   });
-  customRedeemItems.forEach(item => { total += parseFloat(item.price) || 0; });
+  customRedeemItems.forEach(item => {
+    const amount = parseFloat(item.price) || 0;
+    total += amount;
+    deductTotal += amount;
+  });
 
-  document.getElementById('redeem-total-display').textContent = fmt(total);
+  const noDeduct = c?.noMileage || c?.dualTrack;
+  const effectiveTotal = noDeduct ? (c?.dualTrack ? deductTotal : 0) : total;
+  document.getElementById('redeem-total-display').textContent = fmt(total) + (c?.dualTrack && deductTotal < total ? ` (차감: ${fmt(deductTotal)})` : '');
 
-  const clinicId = document.getElementById('redeem-clinic').value;
-  if (clinicId) {
+  if (clinicId && !c?.noMileage) {
     const { balance } = getClinicBalance(clinicId);
-    const after = balance - total;
+    const after = balance - effectiveTotal;
     document.getElementById('redeem-after-balance').textContent = `차감 후 잔액: ${fmt(after)}`;
     document.getElementById('redeem-after-balance').style.color = after < 0 ? 'var(--danger)' : 'inherit';
+  } else {
+    document.getElementById('redeem-after-balance').textContent = '';
   }
   return total;
 }
@@ -2052,8 +2150,25 @@ function saveRedeem() {
   if (!items.length) return alert('발송할 항목을 선택하세요.');
 
   if (c?.noMileage) {
-    if (!confirm(`발송 기록 저장 (마일리지 차감 없음)\n항목: ${items.map(i => i.name).join(', ')}\n\n저장하시겠습니까?`)) return;
+    if (!confirm(`발송 기록 저장 (마일리지 미적용 거래처)\n항목: ${items.map(i => i.name).join(', ')}\n\n저장하시겠습니까?`)) return;
     transactions.push({ id: uid(), clinicId, type: 'spend', amount: 0, items, date, memo, createdAt: Date.now() });
+  } else if (c?.dualTrack) {
+    // 정기 발송 품목(regularPromos)은 amount: 0, 나머지는 정상 차감
+    const regularPromos = c.regularPromos || [];
+    const adjustedItems = items.map(it => {
+      const isRegular = regularPromos.some(rp => it.name.includes(rp) || rp.includes(it.name));
+      return isRegular ? { ...it, amount: 0 } : it;
+    });
+    const deductTotal = adjustedItems.reduce((s, it) => s + it.amount, 0);
+    const { balance } = getClinicBalance(clinicId);
+    const freeNames = adjustedItems.filter(i => i.amount === 0).map(i => i.name).join(', ');
+    const paidNames = adjustedItems.filter(i => i.amount > 0).map(i => i.name).join(', ');
+    let msg = '발송 기록 저장\n';
+    if (freeNames) msg += `차감 없음: ${freeNames}\n`;
+    if (paidNames) msg += `차감 항목: ${paidNames} → ${fmt(deductTotal)}원\n차감 후 잔액: ${fmt(balance - deductTotal)}\n`;
+    if (!paidNames) msg += '(전체 차감 없음)\n';
+    if (!confirm(msg + '\n저장하시겠습니까?')) return;
+    transactions.push({ id: uid(), clinicId, type: 'spend', amount: deductTotal, items: adjustedItems, date, memo, createdAt: Date.now() });
   } else {
     if (total <= 0) return alert('차감할 항목을 선택하세요.');
     const { balance } = getClinicBalance(clinicId);
@@ -2066,7 +2181,7 @@ function saveRedeem() {
   clearRedeemForm();
   renderRedeemHistory();
   renderRedeemClinicSelect();
-  alert(c?.noMileage ? '✅ 발송 기록이 저장되었습니다!' : '✅ 마일리지가 차감되었습니다!');
+  alert('✅ 저장되었습니다!');
 }
 
 function renderRedeemHistory() {
