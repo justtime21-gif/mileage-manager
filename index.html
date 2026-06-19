@@ -3418,10 +3418,23 @@ function saveQuickRecords() {
 
     const txItems = g.items.map(it => {
       const p = promoItems.find(x => x.name === it.item);
-      return { name: it.item, qty: it.qty, price: p?.price || 0, amount: 0 };
+      const price = p?.price || 0;
+      return { name: it.item, qty: it.qty, price, amount: price * it.qty };
     });
+    // noMileage: 발송 기록만, 차감 없음
+    if (clinic.noMileage) {
+      txItems.forEach(i => { i.amount = 0; });
+    }
+    // dualTrack: 정기 발송 품목은 차감 0
+    if (clinic.dualTrack) {
+      const rp = clinic.regularPromos || [];
+      txItems.forEach(i => {
+        if (rp.some(r => i.name.includes(r) || r.includes(i.name))) i.amount = 0;
+      });
+    }
+    const deductTotal = txItems.reduce((s, i) => s + i.amount, 0);
     transactions.push({
-      id: uid(), clinicId: clinic.id, type: 'spend', amount: 0,
+      id: uid(), clinicId: clinic.id, type: 'spend', amount: deductTotal,
       items: txItems, date: g.date, memo: '빠른 입력', createdAt: Date.now()
     });
     newTxCount++;
