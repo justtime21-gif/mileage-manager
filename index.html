@@ -209,7 +209,6 @@
     .sidebar-logo h1::before { content: '💊'; font-size: 22px; }
     .sidebar-logo small { display: none; }
     .main { margin-left: 64px; padding: 16px; }
-    #quick-panel { left: 64px; }
   }
 
   @media (max-width: 640px) {
@@ -244,7 +243,6 @@
 
     /* 메인 콘텐츠 */
     .main { margin-left: 0; padding: 10px; padding-bottom: 70px; }
-    #quick-panel { left: 0; bottom: 60px; } /* 하단 탭바 위에 위치 */
 
     /* 통계 그리드 */
     .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
@@ -287,22 +285,6 @@
     .promo-price { font-size: 14px; }
   }
 
-  #quick-panel {
-    position: fixed; bottom: 0; left: 220px; right: 0; z-index: 200;
-    transform: translateY(calc(100% - 42px));
-    transition: transform 0.25s ease;
-    box-shadow: 0 -4px 24px rgba(0,0,0,0.12);
-  }
-  #quick-panel.open { transform: translateY(0); }
-  #quick-panel-header {
-    background: var(--primary); color: white;
-    padding: 10px 16px; display: flex; align-items: center;
-    justify-content: space-between; cursor: pointer; user-select: none;
-  }
-  #quick-panel-body {
-    background: white; border-top: 2px solid var(--primary);
-    padding: 16px; max-height: 55vh; overflow-y: auto;
-  }
   .qp-preview-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   .qp-preview-table th { padding: 6px 10px; text-align: left; background: var(--gray-50); font-weight: 600; }
   .qp-preview-table td { padding: 7px 10px; border-top: 1px solid var(--gray-100); vertical-align: middle; }
@@ -1165,10 +1147,6 @@ function navigate(page) {
   const pageOrder = ['dashboard', 'clinics', 'prescriptions', 'redeem', 'rx-drugs', 'promo-items', 'history', 'promo-track'];
   const idx = pageOrder.indexOf(page);
   if (idx >= 0) navItems[idx].classList.add('active');
-
-  // 대시보드에는 빠른 발송이 내장되어 있으므로 하단 패널 숨김
-  const qp = document.getElementById('quick-panel');
-  qp.style.display = page === 'dashboard' ? 'none' : '';
 
   if (page === 'dashboard') renderDashboard();
   if (page === 'clinics') renderClinics();
@@ -2994,12 +2972,6 @@ function deleteTx(id) {
 }
 
 // ===== 빠른 발송 입력 =====
-function toggleQuickPanel() {
-  const panel = document.getElementById('quick-panel');
-  const isOpen = panel.classList.toggle('open');
-  document.getElementById('quick-panel-arrow').textContent = isOpen ? '▼' : '▲';
-  if (isOpen) document.getElementById('quick-input-text').focus();
-}
 
 function findClinicByName(name) {
   if (!name) return null;
@@ -3254,9 +3226,10 @@ function saveQuickRecords() {
 
   save();
   window._quickRecords = [];
-  document.getElementById('quick-parse-result').innerHTML = '';
-  document.getElementById('quick-input-text').value = '';
-  toggleQuickPanel();
+  const _rid = window._quickResultId || 'dash-parse-result';
+  const _iid = window._quickInputId || 'dash-input-text';
+  document.getElementById(_rid).innerHTML = '';
+  const _inp = document.getElementById(_iid); if (_inp) _inp.value = '';
   alert(`✅ 완료!\n발송 기록 ${newTxCount}건 저장${newClinicCount ? `\n신규 거래선 ${newClinicCount}개 등록` : ''}`);
   if (document.querySelector('#page-promo-track.active')) renderPromoTrack();
 }
@@ -3266,26 +3239,6 @@ document.getElementById('dash-date').textContent = new Date().toLocaleDateString
 renderDashboard();
 </script>
 
-<!-- ===== 빠른 발송 입력 패널 ===== -->
-<div id="quick-panel">
-  <div id="quick-panel-header" onclick="toggleQuickPanel()">
-    <span style="font-weight:600;font-size:14px">📋 빠른 발송 입력</span>
-    <span id="quick-panel-arrow">▲</span>
-  </div>
-  <div id="quick-panel-body">
-    <div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:12px;align-items:start">
-      <textarea id="quick-input-text" rows="4"
-        placeholder="구글시트 행을 복사하거나 자유 형식으로 입력하세요&#10;예) 살림치과  종이컵  1박스&#10;탭 구분 형식 (구글시트 복사)도 지원됩니다"
-        style="border:1px solid var(--gray-300);border-radius:6px;padding:10px;font-size:13px;resize:vertical;line-height:1.6;width:100%;box-sizing:border-box"
-        onkeydown="if(e&&e.ctrlKey&&e.key==='Enter')parseQuickInput()"></textarea>
-      <div style="display:flex;flex-direction:column;gap:6px">
-        <button class="btn btn-primary" onclick="parseQuickInput()" style="padding:10px 14px;white-space:nowrap">분석</button>
-        <button class="btn btn-outline" onclick="toggleQuickPanel()" style="padding:6px 14px;white-space:nowrap;font-size:12px">닫기</button>
-      </div>
-    </div>
-    <div id="quick-parse-result"></div>
-  </div>
-</div>
 
 </body>
 </html>
