@@ -285,6 +285,9 @@
     .promo-price { font-size: 14px; }
   }
 
+  .stab { background:none; border:none; border-bottom:3px solid transparent; padding:10px 18px; font-size:14px; font-weight:600; color:var(--gray-500); cursor:pointer; white-space:nowrap; margin-bottom:-2px; transition:color .15s,border-color .15s; }
+  .stab:hover { color:var(--gray-800); }
+  .stab.active { color:var(--primary); border-bottom-color:var(--primary); }
   .qp-preview-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   .qp-preview-table th { padding: 6px 10px; text-align: left; background: var(--gray-50); font-weight: 600; }
   .qp-preview-table td { padding: 7px 10px; border-top: 1px solid var(--gray-100); vertical-align: middle; }
@@ -311,12 +314,6 @@
       </div>
       <div class="nav-item" onclick="navigate('redeem')">
         <span class="nav-icon">🎁</span><span>판촉물 차감</span>
-      </div>
-      <div class="nav-item" onclick="navigate('rx-drugs')">
-        <span class="nav-icon">💊</span><span>처방약품 관리</span>
-      </div>
-      <div class="nav-item" onclick="navigate('promo-items')">
-        <span class="nav-icon">📦</span><span>판촉물 목록</span>
       </div>
       <div class="nav-item" onclick="navigate('history')">
         <span class="nav-icon">📊</span><span>이력 조회</span>
@@ -573,63 +570,6 @@
       </div>
     </div>
 
-    <!-- Rx Drugs -->
-    <div id="page-rx-drugs" class="page">
-      <div class="page-header flex justify-between items-center">
-        <div>
-          <h2>처방약품 관리</h2>
-          <p>처방 입력 시 사용되는 약품명과 고정 단가를 관리합니다</p>
-        </div>
-        <button class="btn btn-primary" onclick="openRxDrugModal()">+ 약품 추가</button>
-      </div>
-      <div class="card">
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>약품명</th>
-                <th>보험코드</th>
-                <th class="td-num">단가 (원)</th>
-                <th>분류</th>
-                <th>관리</th>
-              </tr>
-            </thead>
-            <tbody id="rx-drug-table-body"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- Promo Items -->
-    <div id="page-promo-items" class="page">
-      <div class="page-header flex justify-between items-center">
-        <div>
-          <h2>판촉물 목록</h2>
-          <p>구매 가능한 판촉물 품목 및 가격 관리</p>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-accent" onclick="copyPromoListImage()">📋 이미지 복사</button>
-          <button class="btn btn-outline" onclick="savePromoListImage()">🖼️ 이미지 저장</button>
-          <button class="btn btn-primary" onclick="openPromoModal()">+ 품목 추가</button>
-        </div>
-      </div>
-      <div class="card">
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>품목명</th>
-                <th class="td-num">가격 (원, 부가세 포함)</th>
-                <th>카테고리</th>
-                <th>관리</th>
-              </tr>
-            </thead>
-            <tbody id="promo-table-body"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
     <!-- History -->
     <div id="page-history" class="page">
       <div class="page-header">
@@ -703,43 +643,92 @@
         <p>데이터 관리 및 앱 정보</p>
       </div>
 
-      <!-- 데이터 관리 -->
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-title" style="margin-bottom:16px">💾 데이터 관리</div>
-        <div style="display:flex;flex-direction:column;gap:12px">
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:16px;border:1px solid var(--gray-200);border-radius:10px">
-            <div>
-              <div style="font-weight:600;margin-bottom:4px">📤 내보내기</div>
-              <div style="font-size:13px;color:var(--gray-500)">전체 데이터를 JSON 파일로 저장합니다. 백업 또는 기기 이전 시 사용하세요.</div>
+      <!-- 설정 탭 -->
+      <div style="display:flex;gap:0;border-bottom:2px solid var(--gray-200);margin-bottom:20px;overflow-x:auto">
+        <button id="stab-data"       class="stab active" onclick="showSettingsTab('data')">💾 데이터 관리</button>
+        <button id="stab-rx-drugs"   class="stab"        onclick="showSettingsTab('rx-drugs')">💊 처방약품</button>
+        <button id="stab-promo"      class="stab"        onclick="showSettingsTab('promo')">📦 판촉물 목록</button>
+        <button id="stab-admin"      class="stab"        onclick="showSettingsTab('admin')">👤 관리자</button>
+      </div>
+
+      <!-- 탭: 데이터 관리 -->
+      <div id="stab-panel-data">
+        <div class="card">
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:16px;border:1px solid var(--gray-200);border-radius:10px">
+              <div>
+                <div style="font-weight:600;margin-bottom:4px">📤 내보내기</div>
+                <div style="font-size:13px;color:var(--gray-500)">전체 데이터를 JSON 파일로 저장합니다. 백업 또는 기기 이전 시 사용하세요.</div>
+              </div>
+              <button class="btn btn-outline" onclick="exportData()" style="flex-shrink:0;margin-left:16px">내보내기</button>
             </div>
-            <button class="btn btn-outline" onclick="exportData()" style="flex-shrink:0;margin-left:16px">내보내기</button>
-          </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:16px;border:1px solid var(--gray-200);border-radius:10px">
-            <div>
-              <div style="font-weight:600;margin-bottom:4px">📥 가져오기</div>
-              <div style="font-size:13px;color:var(--gray-500)">내보내기로 저장한 JSON을 불러옵니다. 기존 데이터와 병합됩니다.</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:16px;border:1px solid var(--gray-200);border-radius:10px">
+              <div>
+                <div style="font-weight:600;margin-bottom:4px">📥 가져오기</div>
+                <div style="font-size:13px;color:var(--gray-500)">내보내기로 저장한 JSON을 불러옵니다. 기존 데이터와 병합됩니다.</div>
+              </div>
+              <button class="btn btn-outline" onclick="document.getElementById('import-modal').classList.add('open')" style="flex-shrink:0;margin-left:16px">가져오기</button>
             </div>
-            <button class="btn btn-outline" onclick="document.getElementById('import-modal').classList.add('open')" style="flex-shrink:0;margin-left:16px">가져오기</button>
           </div>
         </div>
       </div>
 
-      <!-- 관리자 정보 -->
-      <div class="card">
-        <div class="card-title" style="margin-bottom:16px">👤 관리자 정보</div>
-        <div style="display:flex;flex-direction:column;gap:10px">
-          <div style="display:flex;gap:12px;align-items:center;padding:14px;background:var(--gray-50);border-radius:10px">
-            <span style="font-size:28px">👔</span>
-            <div>
-              <div style="font-weight:700;font-size:16px">성진욱 과장</div>
-              <div style="font-size:13px;color:var(--gray-500);margin-top:2px">거래선 마일리지 관리 시스템 담당</div>
-            </div>
+      <!-- 탭: 처방약품 관리 -->
+      <div id="stab-panel-rx-drugs" style="display:none">
+        <div class="card">
+          <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+            <button class="btn btn-primary" onclick="openRxDrugModal()">+ 약품 추가</button>
           </div>
-          <div style="display:flex;gap:12px;align-items:center;padding:14px;background:var(--gray-50);border-radius:10px">
-            <span style="font-size:24px">✉️</span>
-            <div>
-              <div style="font-size:13px;color:var(--gray-500);margin-bottom:2px">피드백 · 문의</div>
-              <a href="mailto:justtime21@gmail.com" style="font-weight:600;color:var(--primary);text-decoration:none">justtime21@gmail.com</a>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>약품명</th><th>보험코드</th>
+                <th class="td-num">단가 (원)</th><th>분류</th><th>관리</th>
+              </tr></thead>
+              <tbody id="rx-drug-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 탭: 판촉물 목록 -->
+      <div id="stab-panel-promo" style="display:none">
+        <div class="card">
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px">
+            <button class="btn btn-accent" onclick="copyPromoListImage()">📋 이미지 복사</button>
+            <button class="btn btn-outline" onclick="savePromoListImage()">🖼️ 이미지 저장</button>
+            <button class="btn btn-primary" onclick="openPromoModal()">+ 품목 추가</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>품목명</th>
+                <th class="td-num">가격 (원, 부가세 포함)</th>
+                <th>카테고리</th><th>관리</th>
+              </tr></thead>
+              <tbody id="promo-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 탭: 관리자 정보 -->
+      <div id="stab-panel-admin" style="display:none">
+        <div class="card">
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;gap:12px;align-items:center;padding:14px;background:var(--gray-50);border-radius:10px">
+              <span style="font-size:28px">👔</span>
+              <div>
+                <div style="font-weight:700;font-size:16px">성진욱 과장</div>
+                <div style="font-size:13px;color:var(--gray-500);margin-top:2px">거래선 마일리지 관리 시스템 담당</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:12px;align-items:center;padding:14px;background:var(--gray-50);border-radius:10px">
+              <span style="font-size:24px">✉️</span>
+              <div>
+                <div style="font-size:13px;color:var(--gray-500);margin-bottom:2px">피드백 · 문의</div>
+                <a href="mailto:justtime21@gmail.com" style="font-weight:600;color:var(--primary);text-decoration:none">justtime21@gmail.com</a>
+              </div>
             </div>
           </div>
         </div>
@@ -1193,7 +1182,7 @@ function navigate(page) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   const navItems = document.querySelectorAll('.nav-item');
-  const pageOrder = ['dashboard', 'clinics', 'prescriptions', 'redeem', 'rx-drugs', 'promo-items', 'history', 'promo-track', 'settings'];
+  const pageOrder = ['dashboard', 'clinics', 'prescriptions', 'redeem', 'history', 'promo-track', 'settings'];
   const idx = pageOrder.indexOf(page);
   if (idx >= 0) navItems[idx].classList.add('active');
 
@@ -1205,6 +1194,14 @@ function navigate(page) {
   if (page === 'promo-items') renderPromoItems();
   if (page === 'history') { renderHistoryFilters(); renderHistory(); }
   if (page === 'promo-track') renderPromoTrack();
+  if (page === 'settings') { renderRxDrugs(); renderPromoItems(); }
+}
+
+function showSettingsTab(tab) {
+  ['data', 'rx-drugs', 'promo', 'admin'].forEach(t => {
+    document.getElementById('stab-' + t).classList.toggle('active', t === tab);
+    document.getElementById('stab-panel-' + t).style.display = t === tab ? '' : 'none';
+  });
 }
 
 // ===== DASHBOARD =====
