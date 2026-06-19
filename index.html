@@ -3183,7 +3183,13 @@ function parseDispatchText(text) {
   const skipNames = ['사무실','사내','자체','본사','헤드'];
 
   lines.forEach(line => {
-    const cols = line.split('\t');
+    let cols = line.split('\t');
+
+    // 탭이 없으면 2칸 이상 공백으로 분리 시도 (복사붙여넣기 공백 형식 대응)
+    if (cols.length < 4) {
+      const spaceCols = line.split(/\s{2,}/).map(c => c.trim()).filter(Boolean);
+      if (spaceCols.length >= 4) cols = spaceCols;
+    }
 
     if (cols.length >= 10) {
       // 구형 13컬럼 구글시트 형식: col[2]=거래선, col[4]=품목, col[7]=수량, col[10]=정식명, col[12]=날짜
@@ -3197,6 +3203,17 @@ function parseDispatchText(text) {
       if (!clinicName) return;
       const dm = dateRaw.match(/(\d{1,2})\/(\d{1,2})/);
       const date = dm ? `${year}-${dm[1].padStart(2,'0')}-${dm[2].padStart(2,'0')}` : today();
+      rawRecords.push({ name: clinicName, item: matchPromoItem(itemRaw), qty, date, address: '' });
+
+    } else if (cols.length >= 4 && /^\d{1,2}월$/.test((cols[0] || '').trim())) {
+      // 신청 형식: [월] [거래선] [신청자-무시] [품목] [수량]
+      const mo = (cols[0].trim().match(/^(\d{1,2})월$/) || [])[1].padStart(2, '0');
+      const clinicName = (cols[1] || '').trim();
+      if (!clinicName || skipNames.some(s => clinicName.includes(s))) return;
+      const itemRaw = (cols[3] || '').trim();
+      if (!itemRaw) return;
+      const qty = parseInt((cols[4] || '1').replace(/[^\d]/g, '')) || 1;
+      const date = `${year}-${mo}-01`;
       rawRecords.push({ name: clinicName, item: matchPromoItem(itemRaw), qty, date, address: '' });
 
     } else if (cols.length >= 4) {
