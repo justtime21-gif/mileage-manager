@@ -966,6 +966,37 @@
   </div>
 </div>
 
+<!-- 차감 이력 수정 모달 -->
+<div class="modal-overlay" id="spend-edit-modal">
+  <div class="modal" style="max-width:560px">
+    <h3>차감 이력 수정</h3>
+    <div id="spend-edit-meta" style="font-size:13px;color:var(--gray-500);margin-bottom:16px"></div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px">
+      <thead>
+        <tr style="background:var(--gray-100)">
+          <th style="padding:8px;text-align:left;border-bottom:1px solid var(--gray-200)">품목</th>
+          <th style="padding:8px;text-align:center;border-bottom:1px solid var(--gray-200);width:70px">수량</th>
+          <th style="padding:8px;text-align:right;border-bottom:1px solid var(--gray-200);width:90px">금액</th>
+          <th style="padding:8px;width:36px;border-bottom:1px solid var(--gray-200)"></th>
+        </tr>
+      </thead>
+      <tbody id="spend-edit-items"></tbody>
+    </table>
+    <!-- 품목 추가 행 -->
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px">
+      <select id="spend-edit-add-item" style="flex:1;padding:8px;border:1px solid var(--gray-300);border-radius:8px;font-size:13px">
+        <option value="">+ 품목 선택</option>
+      </select>
+      <input type="number" id="spend-edit-add-qty" min="1" value="1" style="width:70px;padding:8px;border:1px solid var(--gray-300);border-radius:8px;font-size:13px;text-align:center">
+      <button class="btn btn-outline btn-sm" onclick="addSpendEditItem()">추가</button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeSpendEditModal()">취소</button>
+      <button class="btn btn-primary" onclick="saveSpendEdit()">저장</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ===== DATA STORE =====
 const DB = {
@@ -3135,7 +3166,10 @@ function renderHistory() {
       </div>
       <div style="text-align:right">
         <div class="history-amount ${isEarn ? 'earn' : 'spend'}">${isEarn ? '+' : '-'}${fmt(t.amount)}</div>
-        <button class="btn btn-outline btn-sm" style="margin-top:4px;color:var(--danger)" onclick="deleteTx('${t.id}')">삭제</button>
+        <div style="display:flex;gap:4px;margin-top:4px;justify-content:flex-end">
+          ${!isEarn ? `<button class="btn btn-outline btn-sm" onclick="editSpendTx('${t.id}')">수정</button>` : ''}
+          <button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="deleteTx('${t.id}')">삭제</button>
+        </div>
       </div>
     </div>`;
   }).join('') : '<div class="empty"><div class="empty-icon">📊</div><p>이력이 없습니다</p></div>';
@@ -3155,6 +3189,96 @@ function deleteTx(id) {
       renderHistory();
     }
   });
+}
+
+// ===== 차감 이력 수정 =====
+let _editSpendId = null;
+let _editSpendItems = [];
+
+function editSpendTx(id) {
+  const t = transactions.find(x => x.id === id);
+  if (!t) return;
+  const c = clinics.find(x => x.id === t.clinicId);
+  _editSpendId = id;
+  _editSpendItems = (t.items || []).map(i => ({ ...i }));
+
+  document.getElementById('spend-edit-meta').textContent =
+    `${c?.name || '-'} · ${t.date || ''} ${t.memo ? '| ' + t.memo : ''}`;
+
+  // 품목 선택 드롭다운 채우기
+  const sel = document.getElementById('spend-edit-add-item');
+  sel.innerHTML = '<option value="">+ 품목 선택</option>' +
+    promoItems.map(p => `<option value="${p.id}">${p.name} (${fmt(p.price)})</option>`).join('');
+
+  renderSpendEditItems();
+  document.getElementById('spend-edit-modal').classList.add('open');
+}
+
+function renderSpendEditItems() {
+  const tbody = document.getElementById('spend-edit-items');
+  if (!_editSpendItems.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="padding:12px;text-align:center;color:var(--gray-400)">품목 없음</td></tr>';
+    return;
+  }
+  tbody.innerHTML = _editSpendItems.map((it, i) => `
+    <tr style="border-bottom:1px solid var(--gray-100)">
+      <td style="padding:8px">${it.name}</td>
+      <td style="padding:8px;text-align:center">
+        <input type="number" min="1" value="${it.qty}" onchange="_editSpendItems[${i}].qty=parseInt(this.value)||1;_editSpendItems[${i}].amount=(_editSpendItems[${i}].price||0)*(_editSpendItems[${i}].qty||1)"
+          style="width:56px;padding:4px;border:1px solid var(--gray-300);border-radius:6px;text-align:center;font-size:13px">
+      </td>
+      <td style="padding:8px;text-align:right">${fmt((it.price || 0) * (it.qty || 1))}</td>
+      <td style="padding:8px;text-align:center">
+        <button onclick="removeSpendEditItem(${i})" style="border:none;background:none;cursor:pointer;color:var(--danger);font-size:16px;line-height:1">✕</button>
+      </td>
+    </tr>`).join('');
+}
+
+function removeSpendEditItem(i) {
+  _editSpendItems.splice(i, 1);
+  renderSpendEditItems();
+}
+
+function addSpendEditItem() {
+  const sel = document.getElementById('spend-edit-add-item');
+  const qty = parseInt(document.getElementById('spend-edit-add-qty').value) || 1;
+  const p = promoItems.find(x => x.id === sel.value);
+  if (!p) return;
+  const existing = _editSpendItems.find(i => i.name === p.name);
+  if (existing) { existing.qty += qty; existing.amount = existing.price * existing.qty; }
+  else _editSpendItems.push({ name: p.name, qty, price: p.price, amount: p.price * qty });
+  sel.value = '';
+  document.getElementById('spend-edit-add-qty').value = 1;
+  renderSpendEditItems();
+}
+
+function saveSpendEdit() {
+  if (!_editSpendId) return;
+  const t = transactions.find(x => x.id === _editSpendId);
+  if (!t) return;
+  const c = clinics.find(x => x.id === t.clinicId);
+
+  // noMileage / dualTrack 로직 적용
+  const items = _editSpendItems.map(i => ({ ...i }));
+  if (c?.noMileage) {
+    items.forEach(i => { i.amount = 0; });
+  } else if (c?.dualTrack) {
+    const rp = c.regularPromos || [];
+    items.forEach(i => {
+      if (rp.some(r => i.name.includes(r) || r.includes(i.name))) i.amount = 0;
+    });
+  }
+  t.items = items;
+  t.amount = items.reduce((s, i) => s + i.amount, 0);
+  save();
+  closeSpendEditModal();
+  renderHistory();
+}
+
+function closeSpendEditModal() {
+  document.getElementById('spend-edit-modal').classList.remove('open');
+  _editSpendId = null;
+  _editSpendItems = [];
 }
 
 // ===== 빠른 발송 입력 =====
