@@ -597,7 +597,10 @@
             <label>기간</label>
             <input type="month" id="hist-month-filter">
           </div>
-          <button class="btn btn-primary" onclick="renderHistory()">조회</button>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" onclick="renderHistory()">조회</button>
+            <button class="btn btn-outline" onclick="openNewSpendModal()" style="white-space:nowrap">+ 차감 추가</button>
+          </div>
         </div>
       </div>
       <div class="card">
@@ -966,11 +969,30 @@
   </div>
 </div>
 
-<!-- 차감 이력 수정 모달 -->
+<!-- 차감 이력 수정/추가 모달 -->
 <div class="modal-overlay" id="spend-edit-modal">
   <div class="modal" style="max-width:560px">
-    <h3>차감 이력 수정</h3>
+    <h3 id="spend-edit-title">차감 이력 수정</h3>
     <div id="spend-edit-meta" style="font-size:13px;color:var(--gray-500);margin-bottom:16px"></div>
+    <!-- 신규 추가 시에만 표시 -->
+    <div id="spend-edit-new-fields" style="display:none;margin-bottom:16px">
+      <div class="form-row" style="grid-template-columns:1fr 1fr">
+        <div class="form-group">
+          <label>거래선 *</label>
+          <select id="spend-edit-clinic" style="width:100%;padding:8px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px">
+            <option value="">선택하세요</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>날짜 *</label>
+          <input type="date" id="spend-edit-date" style="width:100%;padding:8px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>메모</label>
+        <input type="text" id="spend-edit-memo" placeholder="선택 사항" style="width:100%;padding:8px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px">
+      </div>
+    </div>
     <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px">
       <thead>
         <tr style="background:var(--gray-100)">
@@ -3191,9 +3213,32 @@ function deleteTx(id) {
   });
 }
 
-// ===== 차감 이력 수정 =====
+// ===== 차감 이력 수정/추가 =====
 let _editSpendId = null;
 let _editSpendItems = [];
+
+function _openSpendModal() {
+  const sel = document.getElementById('spend-edit-add-item');
+  sel.innerHTML = '<option value="">+ 품목 선택</option>' +
+    promoItems.map(p => `<option value="${p.id}">${p.name} (${fmt(p.price)})</option>`).join('');
+  renderSpendEditItems();
+  document.getElementById('spend-edit-modal').classList.add('open');
+}
+
+function openNewSpendModal() {
+  _editSpendId = null;
+  _editSpendItems = [];
+  document.getElementById('spend-edit-title').textContent = '차감 추가';
+  document.getElementById('spend-edit-meta').textContent = '';
+  document.getElementById('spend-edit-new-fields').style.display = '';
+  // 거래선 드롭다운
+  const csel = document.getElementById('spend-edit-clinic');
+  csel.innerHTML = '<option value="">선택하세요</option>' +
+    clinicsSortedByBalance().map(c => `<option value="${c.id}">${clinicLabel(c)}</option>`).join('');
+  document.getElementById('spend-edit-date').value = today();
+  document.getElementById('spend-edit-memo').value = '';
+  _openSpendModal();
+}
 
 function editSpendTx(id) {
   const t = transactions.find(x => x.id === id);
@@ -3201,17 +3246,11 @@ function editSpendTx(id) {
   const c = clinics.find(x => x.id === t.clinicId);
   _editSpendId = id;
   _editSpendItems = (t.items || []).map(i => ({ ...i }));
-
+  document.getElementById('spend-edit-title').textContent = '차감 이력 수정';
   document.getElementById('spend-edit-meta').textContent =
     `${c?.name || '-'} · ${t.date || ''} ${t.memo ? '| ' + t.memo : ''}`;
-
-  // 품목 선택 드롭다운 채우기
-  const sel = document.getElementById('spend-edit-add-item');
-  sel.innerHTML = '<option value="">+ 품목 선택</option>' +
-    promoItems.map(p => `<option value="${p.id}">${p.name} (${fmt(p.price)})</option>`).join('');
-
-  renderSpendEditItems();
-  document.getElementById('spend-edit-modal').classList.add('open');
+  document.getElementById('spend-edit-new-fields').style.display = 'none';
+  _openSpendModal();
 }
 
 function renderSpendEditItems() {
@@ -3253,13 +3292,27 @@ function addSpendEditItem() {
 }
 
 function saveSpendEdit() {
-  if (!_editSpendId) return;
-  const t = transactions.find(x => x.id === _editSpendId);
-  if (!t) return;
-  const c = clinics.find(x => x.id === t.clinicId);
+  if (!_editSpendItems.length) { alert('품목을 하나 이상 추가하세요.'); return; }
+
+  let clinicId, date, memo;
+  if (_editSpendId) {
+    // 수정 모드
+    const t = transactions.find(x => x.id === _editSpendId);
+    if (!t) return;
+    clinicId = t.clinicId; date = t.date; memo = t.memo;
+  } else {
+    // 신규 모드
+    clinicId = document.getElementById('spend-edit-clinic').value;
+    date = document.getElementById('spend-edit-date').value;
+    memo = document.getElementById('spend-edit-memo').value.trim();
+    if (!clinicId) { alert('거래선을 선택하세요.'); return; }
+    if (!date) { alert('날짜를 입력하세요.'); return; }
+  }
+
+  const c = clinics.find(x => x.id === clinicId);
+  const items = _editSpendItems.map(i => ({ ...i }));
 
   // noMileage / dualTrack 로직 적용
-  const items = _editSpendItems.map(i => ({ ...i }));
   if (c?.noMileage) {
     items.forEach(i => { i.amount = 0; });
   } else if (c?.dualTrack) {
@@ -3268,8 +3321,16 @@ function saveSpendEdit() {
       if (rp.some(r => i.name.includes(r) || r.includes(i.name))) i.amount = 0;
     });
   }
-  t.items = items;
-  t.amount = items.reduce((s, i) => s + i.amount, 0);
+  const total = items.reduce((s, i) => s + i.amount, 0);
+
+  if (_editSpendId) {
+    const t = transactions.find(x => x.id === _editSpendId);
+    t.items = items;
+    t.amount = total;
+  } else {
+    transactions.push({ id: uid(), clinicId, type: 'spend', amount: total, items, date, memo, createdAt: Date.now() });
+  }
+
   save();
   closeSpendEditModal();
   renderHistory();
