@@ -902,8 +902,9 @@
     <div style="border:1px solid var(--gray-200);border-radius:8px;overflow:hidden;background:white">
       <canvas id="report-canvas" style="width:100%;display:block"></canvas>
     </div>
-    <div class="modal-footer">
+    <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
       <button class="btn btn-outline" onclick="closeReportModal()">닫기</button>
+      <button class="btn btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="openSpendFromReport()">+ 차감 추가</button>
       <button class="btn btn-outline" onclick="copyReportText()">📝 텍스트 복사</button>
       <button class="btn btn-accent" onclick="copyReportImage()">📋 이미지 복사</button>
       <button class="btn btn-primary" onclick="downloadReportImage()">💾 이미지 저장</button>
@@ -2682,6 +2683,18 @@ function openReportModal(clinicId) {
 
 function closeReportModal() { document.getElementById('report-modal').classList.remove('open'); }
 
+function openSpendFromReport() {
+  const clinicId = document.getElementById('report-clinic').value;
+  if (!clinicId) { alert('거래선을 먼저 선택하세요.'); return; }
+  openNewSpendModal();
+  // 거래선 고정 후 드롭다운 비활성화
+  const csel = document.getElementById('spend-edit-clinic');
+  csel.value = clinicId;
+  csel.disabled = true;
+  // 저장 후 보고서 재생성
+  window._spendEditCallback = () => { csel.disabled = false; renderReport(); };
+}
+
 function getReportData() {
   const clinicId = document.getElementById('report-clinic').value;
   const c = clinics.find(x => x.id === clinicId);
@@ -3333,13 +3346,20 @@ function saveSpendEdit() {
 
   save();
   closeSpendEditModal();
-  renderHistory();
+  if (window._spendEditCallback) {
+    window._spendEditCallback();
+    window._spendEditCallback = null;
+  } else {
+    renderHistory();
+  }
 }
 
 function closeSpendEditModal() {
   document.getElementById('spend-edit-modal').classList.remove('open');
+  document.getElementById('spend-edit-clinic').disabled = false;
   _editSpendId = null;
   _editSpendItems = [];
+  if (window._spendEditCallback) { window._spendEditCallback = null; }
 }
 
 // ===== 빠른 발송 입력 =====
