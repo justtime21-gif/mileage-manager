@@ -1577,10 +1577,20 @@ function autoSetRxEnd() {
   document.getElementById('rx-end').value = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}`;
 }
 
+function clinicLabel(c) {
+  return c.name + (c.branch ? ' [' + c.branch + ']' : '');
+}
+function clinicsSortedByBalance() {
+  return [...clinics]
+    .map(c => ({ c, bal: getClinicBalance(c.id).balance }))
+    .sort((a, b) => b.bal - a.bal)
+    .map(x => x.c);
+}
+
 function renderRxClinicSelect() {
   const sel = document.getElementById('rx-clinic');
   sel.innerHTML = '<option value="">거래선을 선택하세요</option>' +
-    [...clinics].sort((a, b) => a.name.localeCompare(b.name)).map(c => `<option value="${c.id}" data-rate="${c.rate}">${c.name}</option>`).join('');
+    clinicsSortedByBalance().map(c => `<option value="${c.id}" data-rate="${c.rate}">${clinicLabel(c)}</option>`).join('');
   if (!document.getElementById('rx-start').value) setDefaultRxPeriod();
   if (!rxItems.length) { rxItems = []; addRxItem(); addRxItem(); addRxItem(); }
   renderRxItemRows();
@@ -2037,9 +2047,9 @@ let customRedeemItems = [];
 function renderRedeemClinicSelect() {
   const sel = document.getElementById('redeem-clinic');
   sel.innerHTML = '<option value="">거래선을 선택하세요</option>' +
-    [...clinics].sort((a, b) => a.name.localeCompare(b.name)).map(c => {
+    clinicsSortedByBalance().map(c => {
       const { balance } = getClinicBalance(c.id);
-      return `<option value="${c.id}">${c.name} (잔액: ${fmt(balance)})</option>`;
+      return `<option value="${c.id}">${clinicLabel(c)} (잔액: ${fmt(balance)})</option>`;
     }).join('');
   document.getElementById('redeem-date').value = today();
 }
@@ -2609,8 +2619,8 @@ function deletePromoItem(id) {
 // ===== REPORT (카톡 전송용 이미지) =====
 function openReportModal(clinicId) {
   const sel = document.getElementById('report-clinic');
-  sel.innerHTML = [...clinics].sort((a, b) => a.name.localeCompare(b.name))
-    .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  sel.innerHTML = clinicsSortedByBalance()
+    .map(c => `<option value="${c.id}">${clinicLabel(c)}</option>`).join('');
   sel.value = clinicId;
 
   document.getElementById('report-modal').classList.add('open');
@@ -2912,8 +2922,8 @@ function renderPromoTrack() {
   const clinicFilter = document.getElementById('pt-clinic-filter');
   const prevVal = clinicFilter.value;
   clinicFilter.innerHTML = '<option value="">전체</option>' +
-    [...clinics].sort((a, b) => a.name.localeCompare(b.name))
-      .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    clinicsSortedByBalance()
+      .map(c => `<option value="${c.id}">${clinicLabel(c)}</option>`).join('');
   clinicFilter.value = prevVal;
 
   renderPromoChecklist(year);
@@ -3096,7 +3106,7 @@ function copyAllPromoHistory() {
 function renderHistoryFilters() {
   const sel = document.getElementById('hist-clinic-filter');
   sel.innerHTML = '<option value="">전체</option>' +
-    [...clinics].sort((a, b) => a.name.localeCompare(b.name)).map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    clinicsSortedByBalance().map(c => `<option value="${c.id}">${clinicLabel(c)}</option>`).join('');
 }
 
 function renderHistory() {
