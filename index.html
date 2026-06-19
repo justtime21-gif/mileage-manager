@@ -362,15 +362,23 @@
         <button class="btn btn-primary" onclick="navigate('prescriptions')">+ 처방 입력</button>
       </div>
       <div class="stats-grid" id="dash-stats"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-        <div class="card">
-          <div class="card-title">마일리지 잔액 TOP 10</div>
-          <div id="dash-top-clinics"></div>
+      <div class="card" style="margin-top:4px">
+        <div style="text-align:center;margin-bottom:16px">
+          <div style="font-size:18px;font-weight:700;color:var(--gray-800);margin-bottom:4px">📋 빠른 발송 입력</div>
+          <div style="font-size:13px;color:var(--gray-400)">구글시트나 자유 형식으로 발송 내역을 붙여넣으세요</div>
         </div>
-        <div class="card">
-          <div class="card-title">최근 처방 이력</div>
-          <div id="dash-recent"></div>
+        <div style="position:relative;margin-bottom:12px">
+          <textarea id="dash-input-text" rows="4"
+            placeholder="예) 살림치과&#9;종이컵&#9;1&#10;미소진치과&#9;각티슈&#9;2&#10;&#10;구글시트 행을 그대로 복사해 붙여넣어도 됩니다"
+            style="width:100%;box-sizing:border-box;border:2px solid var(--gray-200);border-radius:12px;padding:14px 16px;font-size:14px;line-height:1.7;resize:vertical;outline:none;transition:border-color .2s;font-family:inherit"
+            onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--gray-200)'"
+            onkeydown="if(event.ctrlKey&&event.key==='Enter')parseDashInput()"></textarea>
         </div>
+        <button class="btn btn-primary" onclick="parseDashInput()"
+          style="width:100%;height:48px;font-size:16px;font-weight:700;border-radius:10px;letter-spacing:.3px">
+          🔍 발송 내역 분석
+        </button>
+        <div id="dash-parse-result" style="margin-top:16px"></div>
       </div>
     </div>
 
@@ -1158,6 +1166,10 @@ function navigate(page) {
   const idx = pageOrder.indexOf(page);
   if (idx >= 0) navItems[idx].classList.add('active');
 
+  // 대시보드에는 빠른 발송이 내장되어 있으므로 하단 패널 숨김
+  const qp = document.getElementById('quick-panel');
+  qp.style.display = page === 'dashboard' ? 'none' : '';
+
   if (page === 'dashboard') renderDashboard();
   if (page === 'clinics') renderClinics();
   if (page === 'prescriptions') { renderRxClinicSelect(); renderRxHistory('all'); }
@@ -1185,38 +1197,6 @@ function renderDashboard() {
     <div class="stat-card"><div class="stat-label">총 차감액</div><div class="stat-value" style="font-size:20px;color:var(--danger)">${fmt(totalSpent)}</div><div class="stat-sub">누적 판촉물</div></div>
   `;
 
-  const sorted = [...clinics].sort((a, b) => getClinicBalance(b.id).balance - getClinicBalance(a.id).balance).slice(0, 10);
-  const maxBal = Math.max(...sorted.map(c => getClinicBalance(c.id).balance), 1);
-  document.getElementById('dash-top-clinics').innerHTML = sorted.length ? sorted.map(c => {
-    const { balance } = getClinicBalance(c.id);
-    const pct = Math.max(0, (balance / maxBal) * 100);
-    return `<div style="margin-bottom:12px">
-      <div class="flex justify-between" style="margin-bottom:4px">
-        <span style="font-size:13px;font-weight:500">${c.name}</span>
-        <span style="font-size:13px;font-weight:700;color:var(--primary)">${fmt(balance)}</span>
-      </div>
-      <div class="mileage-bar"><div class="mileage-fill" style="width:${pct}%"></div></div>
-    </div>`;
-  }).join('') : '<div class="empty"><div class="empty-icon">🏥</div><p>거래선을 추가하세요</p></div>';
-
-  const recent = [...transactions].sort((a, b) => b.createdAt - a.createdAt).slice(0, 8);
-  document.getElementById('dash-recent').innerHTML = recent.length ? recent.map(t => {
-    const clinic = clinics.find(c => c.id === t.clinicId);
-    const isEarn = t.type === 'earn';
-    return `<div class="history-item">
-      <div class="history-icon ${isEarn ? 'earn' : 'spend'}">${isEarn ? '📋' : '🎁'}</div>
-      <div class="history-info">
-        <div class="history-clinic">${clinic?.name || '-'}</div>
-        <div class="history-desc">${isEarn
-          ? (t.memo || `${txPeriod(t)} 처방 적립`)
-          : ((t.items || []).map(i => `${i.name} × ${fmtNum(i.qty || 1)}개`).join(', ') || t.memo || '판촉물 차감')}</div>
-        <div class="history-date">${t.date || ''}</div>
-      </div>
-      <div>
-        <div class="history-amount ${isEarn ? 'earn' : 'spend'}">${isEarn ? '+' : '-'}${fmt(t.amount)}</div>
-      </div>
-    </div>`;
-  }).join('') : '<div class="empty"><div class="empty-icon">📊</div><p>이력이 없습니다</p></div>';
 }
 
 // ===== CLINICS =====
@@ -3188,9 +3168,12 @@ function parseQuickInput() {
   renderQuickPreview(groups);
 }
 
-function renderQuickPreview(groups) {
+function renderQuickPreview(groups, resultId = 'quick-parse-result', inputId = 'quick-input-text') {
   window._quickRecords = groups;
-  const el = document.getElementById('quick-parse-result');
+  window._quickResultId = resultId;
+  window._quickInputId = inputId;
+  const el = document.getElementById(resultId);
+  if (!el) return;
   if (!groups.length) {
     el.innerHTML = '<p style="color:var(--gray-400);margin:8px 0">인식된 내용이 없습니다. 거래선+품목이 포함된 텍스트를 붙여넣으세요.</p>';
     return;
@@ -3218,14 +3201,21 @@ function renderQuickPreview(groups) {
       <tbody>${rows}</tbody>
     </table>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
-      <button class="btn btn-outline" onclick="window._quickRecords=[];document.getElementById('quick-parse-result').innerHTML='';document.getElementById('quick-input-text').value=''">초기화</button>
+      <button class="btn btn-outline" onclick="window._quickRecords=[];document.getElementById(window._quickResultId).innerHTML='';document.getElementById(window._quickInputId).value=''">초기화</button>
       <button class="btn btn-primary" onclick="saveQuickRecords()">✅ ${groups.length}건 저장</button>
     </div>`;
 }
 
 function removeQuickRecord(i) {
   window._quickRecords.splice(i, 1);
-  renderQuickPreview(window._quickRecords);
+  renderQuickPreview(window._quickRecords, window._quickResultId, window._quickInputId);
+}
+
+function parseDashInput() {
+  const text = (document.getElementById('dash-input-text')?.value || '').trim();
+  if (!text) return;
+  const groups = parseDispatchText(text);
+  renderQuickPreview(groups, 'dash-parse-result', 'dash-input-text');
 }
 
 function saveQuickRecords() {
