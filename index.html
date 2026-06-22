@@ -1013,6 +1013,17 @@
       <input type="number" id="spend-edit-add-qty" min="1" value="1" style="width:70px;padding:8px;border:1px solid var(--gray-300);border-radius:8px;font-size:13px;text-align:center">
       <button class="btn btn-outline btn-sm" onclick="addSpendEditItem()">추가</button>
     </div>
+    <!-- 회식비 지원 (대외비) -->
+    <div style="border-top:1px dashed var(--gray-200);padding-top:12px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:13px;font-weight:500;color:var(--gray-600)">🔒 회식비 지원 (대외비)</span>
+        <span style="font-size:11px;color:var(--gray-400)">보고서에만 표시, 판촉물 목록 이미지 제외</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="number" id="spend-edit-meal" min="0" placeholder="0" style="flex:1;padding:8px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;text-align:right">
+        <span style="font-size:14px;color:var(--gray-500)">원</span>
+      </div>
+    </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeSpendEditModal()">취소</button>
       <button class="btn btn-primary" onclick="saveSpendEdit()">저장</button>
@@ -3195,7 +3206,7 @@ function renderHistory() {
         <div class="history-clinic">${c?.name || '-'}</div>
         <div class="history-desc">${isEarn
           ? `처방 적립 | ${txPeriod(t)} | 처방액 ${fmt(t.rxTotal || 0)} | 적립률 ${t.rate}%`
-          : `판촉물 차감 | ${(t.items || []).map(i => `${i.name} × ${fmtNum(i.qty || 1)}개`).join(', ') || '-'}`
+          : `판촉물 차감 | ${(t.items || []).map(i => `${i.confidential ? '🔒' : ''}${i.name} × ${fmtNum(i.qty || 1)}개`).join(', ') || '-'}`
         }</div>
         <div class="history-date">${t.date || ''} ${t.memo ? '| ' + t.memo : ''}</div>
       </div>
@@ -3244,12 +3255,12 @@ function openNewSpendModal() {
   document.getElementById('spend-edit-title').textContent = '차감 추가';
   document.getElementById('spend-edit-meta').textContent = '';
   document.getElementById('spend-edit-new-fields').style.display = '';
-  // 거래선 드롭다운
   const csel = document.getElementById('spend-edit-clinic');
   csel.innerHTML = '<option value="">선택하세요</option>' +
     clinicsSortedByBalance().map(c => `<option value="${c.id}">${clinicLabel(c)}</option>`).join('');
   document.getElementById('spend-edit-date').value = today();
   document.getElementById('spend-edit-memo').value = '';
+  document.getElementById('spend-edit-meal').value = '';
   _openSpendModal();
 }
 
@@ -3258,11 +3269,14 @@ function editSpendTx(id) {
   if (!t) return;
   const c = clinics.find(x => x.id === t.clinicId);
   _editSpendId = id;
-  _editSpendItems = (t.items || []).map(i => ({ ...i }));
+  // 회식비 항목은 별도 필드로 분리해서 표시
+  const mealItem = (t.items || []).find(i => i.confidential);
+  _editSpendItems = (t.items || []).filter(i => !i.confidential).map(i => ({ ...i }));
   document.getElementById('spend-edit-title').textContent = '차감 이력 수정';
   document.getElementById('spend-edit-meta').textContent =
     `${c?.name || '-'} · ${t.date || ''} ${t.memo ? '| ' + t.memo : ''}`;
   document.getElementById('spend-edit-new-fields').style.display = 'none';
+  document.getElementById('spend-edit-meal').value = mealItem ? mealItem.amount : '';
   _openSpendModal();
 }
 
@@ -3334,6 +3348,13 @@ function saveSpendEdit() {
       if (rp.some(r => i.name.includes(r) || r.includes(i.name))) i.amount = 0;
     });
   }
+
+  // 회식비 지원 (대외비) 처리
+  const mealAmt = parseInt(document.getElementById('spend-edit-meal').value) || 0;
+  if (mealAmt > 0) {
+    items.push({ name: '회식비 지원', qty: 1, price: mealAmt, amount: mealAmt, confidential: true });
+  }
+
   const total = items.reduce((s, i) => s + i.amount, 0);
 
   if (_editSpendId) {
@@ -3357,6 +3378,7 @@ function saveSpendEdit() {
 function closeSpendEditModal() {
   document.getElementById('spend-edit-modal').classList.remove('open');
   document.getElementById('spend-edit-clinic').disabled = false;
+  document.getElementById('spend-edit-meal').value = '';
   _editSpendId = null;
   _editSpendItems = [];
   if (window._spendEditCallback) { window._spendEditCallback = null; }
