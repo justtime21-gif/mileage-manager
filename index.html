@@ -3442,14 +3442,24 @@ function parseDispatchText(text) {
       const date = dm ? `${year}-${dm[1].padStart(2,'0')}-${dm[2].padStart(2,'0')}` : today();
       rawRecords.push({ name: clinicName, item: matchPromoItem(itemRaw), qty, date, address: '' });
 
-    } else if (cols.length >= 4 && /^\d{1,2}월$/.test((cols[0] || '').trim())) {
-      // 신청 형식: [월] [거래선] [신청자-무시] [품목] [수량]
+    } else if (cols.length >= 3 && /^\d{1,2}월$/.test((cols[0] || '').trim())) {
+      // 신청 형식: [월] [거래선] ([신청자]) [품목] [수량]
+      // 4컬럼: [월] [거래선] [품목] [수량]
+      // 5컬럼: [월] [거래선] [신청자-무시] [품목] [수량]
       const mo = (cols[0].trim().match(/^(\d{1,2})월$/) || [])[1].padStart(2, '0');
       const clinicName = (cols[1] || '').trim();
       if (!clinicName || skipNames.some(s => clinicName.includes(s))) return;
-      const itemRaw = (cols[3] || '').trim();
+      let itemRaw, qty;
+      if (cols.length >= 5 && !/^\d+$/.test((cols[2] || '').trim())) {
+        // 5컬럼: cols[2]가 숫자가 아니면 신청자 이름 → 무시
+        itemRaw = (cols[3] || '').trim();
+        qty = parseInt((cols[4] || '1').replace(/[^\d]/g, '')) || 1;
+      } else {
+        // 4컬럼 또는 cols[2]가 숫자: [월] [거래선] [품목] [수량]
+        itemRaw = (cols[2] || '').trim();
+        qty = parseInt((cols[3] || '1').replace(/[^\d]/g, '')) || 1;
+      }
       if (!itemRaw) return;
-      const qty = parseInt((cols[4] || '1').replace(/[^\d]/g, '')) || 1;
       const date = `${year}-${mo}-01`;
       rawRecords.push({ name: clinicName, item: matchPromoItem(itemRaw), qty, date, address: '' });
 
