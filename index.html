@@ -1971,8 +1971,13 @@ function applyOcrResult(text) {
     const nl = nums.length;
     let qty = '';
     if (nl >= 7) {
-      // [Format B] 표준 9컬럼
-      qty = nums[6];
+      // 총처방량 = 급여량 + 비급여량 관계로 열 위치 자동 판별
+      // [Format B] 단가|급여횟수|급여량|비급여횟수|비급여량|총처방횟수|총처방량  → nums[6] = nums[2]+nums[4]
+      // [Format D] 단가|총처방횟수|총처방량|급여횟수|급여량|비급여횟수|비급여량  → nums[2] = nums[4]+nums[6]
+      const matchB = Math.abs((nums[2] + nums[4]) - nums[6]) <= Math.max(1, nums[6] * 0.01);
+      const matchD = Math.abs((nums[4] + nums[6]) - nums[2]) <= Math.max(1, nums[2] * 0.01);
+      if (matchD && !matchB) qty = nums[2];  // Format D 확인됨
+      else qty = nums[6];                     // Format B (기본)
     } else if (nl >= 3 && Math.abs(nums[nl-1] - nums[nl-3] * nums[nl-2]) <= Math.max(nums[nl-1] * 0.02, 1)) {
       // [Format C] Andwin: 금액 = 단가 × 수량 관계 감지 → 수량 = 뒤에서 두 번째
       qty = nums[nl-2];
