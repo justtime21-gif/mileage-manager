@@ -3560,8 +3560,14 @@ function parseFreeFormDispatch(line, year) {
     let bestCov = 1;
     for (const p of sortedPromos) {
       const pn = normalizeText(p.name);
-      const cov = qWords.filter(w => pn.includes(w)).length;
-      if (cov > bestCov) { bestCov = cov; foundItem = p.name; itemIdx = 0; }
+      const matched = qWords.filter(w => pn.includes(w));
+      if (matched.length > bestCov) {
+        bestCov = matched.length;
+        foundItem = p.name;
+        // itemIdx: 매칭된 첫 단어의 실제 위치 → 거래선 prefix 추출에 사용
+        const firstMatchedWord = qWords.find(w => pn.includes(w));
+        itemIdx = firstMatchedWord ? text.search(new RegExp(firstMatchedWord)) : 0;
+      }
     }
   }
 
