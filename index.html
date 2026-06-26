@@ -3546,13 +3546,23 @@ function parseFreeFormDispatch(line, year) {
     date = today();
   }
 
-  // Find item (longest match first)
+  // Find item (longest match first, then word-coverage fallback)
   let foundItem = null, itemIdx = -1, itemLen = 0;
   const sortedPromos = [...promoItems].sort((a, b) => b.name.length - a.name.length);
   for (const p of sortedPromos) {
     const short = p.name.includes('(') ? p.name.split('(')[0].trim() : p.name;
     const idx = text.indexOf(short);
     if (idx >= 0) { foundItem = p.name; itemIdx = idx; itemLen = short.length; break; }
+  }
+  if (!foundItem) {
+    // 단어 교집합 fallback: 입력 단어 중 2개 이상이 품목명에 포함되면 매칭
+    const qWords = text.replace(/\d+/g, '').split(/\s+/).map(normalizeText).filter(w => w.length >= 2);
+    let bestCov = 1;
+    for (const p of sortedPromos) {
+      const pn = normalizeText(p.name);
+      const cov = qWords.filter(w => pn.includes(w)).length;
+      if (cov > bestCov) { bestCov = cov; foundItem = p.name; itemIdx = 0; }
+    }
   }
 
   // Find quantity
