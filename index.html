@@ -1830,14 +1830,12 @@ window.addEventListener('paste', e => {
   }
 });
 
-function loadTesseract() {
-  if (window.Tesseract) return Promise.resolve();
+function fileToBase64(file) {
   return new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
-    s.onload = resolve;
-    s.onerror = () => reject(new Error('offline'));
-    document.head.appendChild(s);
+    const r = new FileReader();
+    r.onload = () => resolve(r.result.split(',')[1]);
+    r.onerror = reject;
+    r.readAsDataURL(file);
   });
 }
 
@@ -1846,29 +1844,23 @@ async function runStatsOcr() {
   const status = document.getElementById('ocr-status');
   const btn = document.getElementById('ocr-run-btn');
   btn.disabled = true;
-  status.innerHTML = '<span style="color:#1e40af">⏳ 인식 엔진 로딩 중... (최초 1회는 다운로드로 시간이 걸립니다)</span>';
+  status.innerHTML = '<span style="color:#1e40af">⏳ 사진 인식 중...</span>';
 
   try {
-    await loadTesseract();
-    let curPage = 1;
-    const worker = await Tesseract.createWorker('kor+eng', 1, {
-      logger: m => {
-        if (m.status === 'recognizing text') {
-          status.innerHTML = `<span style="color:#1e40af">⏳ 사진 인식 중... (${curPage}/${statsPhotos.length}쪽) ${Math.round(m.progress * 100)}%</span>`;
-        }
-      }
+    const images = await Promise.all(statsPhotos.map(async f => ({
+      data: await fileToBase64(f),
+      format: (f.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg'),
+    })));
+    const r = await fetch('/api/ocr', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ images }),
     });
-    // 여러 장을 차례로 인식해 텍스트 합치기
-    let fullText = '';
-    for (let i = 0; i < statsPhotos.length; i++) {
-      curPage = i + 1;
-      const { data } = await worker.recognize(statsPhotos[i]);
-      fullText += data.text + '\n';
-    }
-    await worker.terminate();
-    applyOcrResult(fullText);
+    const json = await r.json();
+    if (!r.ok) throw new Error(json.error || 'OCR 요청 실패');
+    applyOcrResult(json.text || '');
   } catch (err) {
-    status.innerHTML = '<span style="color:var(--danger)">⚠️ 인식에 실패했습니다 (인터넷 연결 필요). 위 사진을 보면서 직접 입력해 주세요.</span>';
+    status.innerHTML = `<span style="color:var(--danger)">⚠️ 인식에 실패했습니다 (${err.message || '인터넷 연결 필요'}). 위 사진을 보면서 직접 입력해 주세요.</span>`;
   } finally {
     btn.disabled = false;
   }
