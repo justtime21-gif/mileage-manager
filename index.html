@@ -975,10 +975,10 @@
   <div class="modal" style="max-width:560px">
     <h3 id="spend-edit-title">차감 이력 수정</h3>
     <div id="spend-edit-meta" style="font-size:13px;color:var(--gray-500);margin-bottom:16px"></div>
-    <!-- 신규 추가 시에만 표시 -->
-    <div id="spend-edit-new-fields" style="display:none;margin-bottom:16px">
+    <div style="margin-bottom:16px">
       <div class="form-row" style="grid-template-columns:1fr 1fr">
-        <div class="form-group">
+        <!-- 신규 추가 시에만 표시 -->
+        <div class="form-group" id="spend-edit-clinic-group" style="display:none">
           <label>거래선 *</label>
           <select id="spend-edit-clinic" style="width:100%;padding:8px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px">
             <option value="">선택하세요</option>
@@ -3259,7 +3259,7 @@ function openNewSpendModal() {
   _editSpendItems = [];
   document.getElementById('spend-edit-title').textContent = '차감 추가';
   document.getElementById('spend-edit-meta').textContent = '';
-  document.getElementById('spend-edit-new-fields').style.display = '';
+  document.getElementById('spend-edit-clinic-group').style.display = '';
   const csel = document.getElementById('spend-edit-clinic');
   csel.innerHTML = '<option value="">선택하세요</option>' +
     clinicsSortedByBalance().map(c => `<option value="${c.id}">${clinicLabel(c)}</option>`).join('');
@@ -3278,9 +3278,10 @@ function editSpendTx(id) {
   const mealItem = (t.items || []).find(i => i.confidential);
   _editSpendItems = (t.items || []).filter(i => !i.confidential).map(i => ({ ...i }));
   document.getElementById('spend-edit-title').textContent = '차감 이력 수정';
-  document.getElementById('spend-edit-meta').textContent =
-    `${c?.name || '-'} · ${t.date || ''} ${t.memo ? '| ' + t.memo : ''}`;
-  document.getElementById('spend-edit-new-fields').style.display = 'none';
+  document.getElementById('spend-edit-meta').textContent = c?.name || '-';
+  document.getElementById('spend-edit-clinic-group').style.display = 'none';
+  document.getElementById('spend-edit-date').value = t.date || today();
+  document.getElementById('spend-edit-memo').value = t.memo || '';
   document.getElementById('spend-edit-meal').value = mealItem ? mealItem.amount : '';
   _openSpendModal();
 }
@@ -3326,19 +3327,20 @@ function addSpendEditItem() {
 function saveSpendEdit() {
   if (!_editSpendItems.length) { alert('품목을 하나 이상 추가하세요.'); return; }
 
-  let clinicId, date, memo;
+  let clinicId;
+  const date = document.getElementById('spend-edit-date').value;
+  const memo = document.getElementById('spend-edit-memo').value.trim();
+  if (!date) { alert('날짜를 입력하세요.'); return; }
+
   if (_editSpendId) {
     // 수정 모드
     const t = transactions.find(x => x.id === _editSpendId);
     if (!t) return;
-    clinicId = t.clinicId; date = t.date; memo = t.memo;
+    clinicId = t.clinicId;
   } else {
     // 신규 모드
     clinicId = document.getElementById('spend-edit-clinic').value;
-    date = document.getElementById('spend-edit-date').value;
-    memo = document.getElementById('spend-edit-memo').value.trim();
     if (!clinicId) { alert('거래선을 선택하세요.'); return; }
-    if (!date) { alert('날짜를 입력하세요.'); return; }
   }
 
   const c = clinics.find(x => x.id === clinicId);
@@ -3366,6 +3368,8 @@ function saveSpendEdit() {
     const t = transactions.find(x => x.id === _editSpendId);
     t.items = items;
     t.amount = total;
+    t.date = date;
+    t.memo = memo;
   } else {
     transactions.push({ id: uid(), clinicId, type: 'spend', amount: total, items, date, memo, createdAt: Date.now() });
   }
