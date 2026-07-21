@@ -1039,6 +1039,31 @@
   </div>
 </div>
 
+<!-- 처방 이력 상세 보기 모달 -->
+<div class="modal-overlay" id="earn-detail-modal">
+  <div class="modal" style="max-width:620px">
+    <h3 id="earn-detail-title">처방의약품 현황</h3>
+    <div id="earn-detail-meta" style="font-size:13px;color:var(--gray-500);margin-bottom:16px"></div>
+    <div style="overflow-x:auto">
+      <table id="earn-detail-table" style="width:100%;border-collapse:collapse;font-size:14px">
+        <thead>
+          <tr style="background:var(--primary);color:#fff">
+            <th style="padding:10px 12px;text-align:left">품목명</th>
+            <th style="padding:10px 8px;text-align:right">처방량</th>
+            <th style="padding:10px 8px;text-align:right">단가 (원)</th>
+            <th style="padding:10px 8px;text-align:right">처방금액 (원)</th>
+            <th style="padding:10px 8px;text-align:right">마일리지 (원)</th>
+          </tr>
+        </thead>
+        <tbody id="earn-detail-body"></tbody>
+      </table>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="document.getElementById('earn-detail-modal').classList.remove('open')">닫기</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ===== DATA STORE =====
 const DB = {
@@ -3235,12 +3260,70 @@ function renderHistory() {
       <div style="text-align:right">
         <div class="history-amount ${isEarn ? 'earn' : 'spend'}">${isEarn ? '+' : '-'}${fmt(t.amount)}</div>
         <div style="display:flex;gap:4px;margin-top:4px;justify-content:flex-end">
-          ${!isEarn ? `<button class="btn btn-outline btn-sm" onclick="editSpendTx('${t.id}')">수정</button>` : ''}
+          ${isEarn ? `<button class="btn btn-outline btn-sm" onclick="showEarnDetail('${t.id}')">상세</button>` : `<button class="btn btn-outline btn-sm" onclick="editSpendTx('${t.id}')">수정</button>`}
           <button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="deleteTx('${t.id}')">삭제</button>
         </div>
       </div>
     </div>`;
   }).join('') : '<div class="empty"><div class="empty-icon">📊</div><p>이력이 없습니다</p></div>';
+}
+
+function showEarnDetail(txId) {
+  const t = transactions.find(x => x.id === txId);
+  if (!t) return;
+  const c = clinics.find(x => x.id === t.clinicId);
+  const rate = t.rate || 0;
+  const items = (t.items || []).filter(i => (parseFloat(i.qty) || 0) > 0);
+
+  let periodStr = '';
+  if (t.rxStart && t.rxEnd) {
+    const f = s => `${s.slice(2,4)}년 ${Number(s.slice(5,7))}월 ${Number(s.slice(8,10))}일`;
+    periodStr = `${f(t.rxStart)} ~ ${f(t.rxEnd)}`;
+  } else {
+    periodStr = t.date || '';
+  }
+
+  const now = new Date();
+  const createdStr = t.createdAt
+    ? new Date(t.createdAt).toLocaleString('ko-KR')
+    : now.toLocaleString('ko-KR');
+
+  document.getElementById('earn-detail-title').textContent = `${c?.name || '-'} 처방의약품 현황`;
+  document.getElementById('earn-detail-meta').innerHTML =
+    `기간: ${periodStr}<br>작성일시: ${createdStr}`;
+
+  const rows = items.map((it, idx) => {
+    const qty = parseFloat(it.qty) || 0;
+    const price = parseFloat(it.price) || 0;
+    const amount = qty * price;
+    const mileage = Math.round(amount * rate / 100);
+    const bg = idx % 2 === 0 ? '' : 'background:var(--gray-50)';
+    return `<tr style="${bg}">
+      <td style="padding:9px 12px">${it.name}</td>
+      <td style="padding:9px 8px;text-align:right">${fmtNum(qty)}</td>
+      <td style="padding:9px 8px;text-align:right">${fmt(price)}</td>
+      <td style="padding:9px 8px;text-align:right">${fmt(amount)}</td>
+      <td style="padding:9px 8px;text-align:right">${fmt(mileage)}</td>
+    </tr>`;
+  }).join('');
+
+  const rxTotal = t.rxTotal || items.reduce((s, i) => s + (parseFloat(i.qty)||0)*(parseFloat(i.price)||0), 0);
+  const earnAmount = t.amount || 0;
+  const { balance } = getClinicBalance(t.clinicId);
+
+  const totalRow = `<tr style="background:var(--primary-light);font-weight:700;color:var(--primary)">
+    <td colspan="3" style="padding:9px 12px">처방액 합계</td>
+    <td style="padding:9px 8px;text-align:right">${fmt(rxTotal)}</td>
+    <td style="padding:9px 8px;text-align:right">${fmt(earnAmount)}</td>
+  </tr>`;
+
+  const balRow = `<tr style="background:#fff3e0;font-weight:700;color:#e65100">
+    <td colspan="4" style="padding:9px 12px">누적 마일리지 (적립률 ${rate}%, 이전잔액 포함)</td>
+    <td style="padding:9px 8px;text-align:right">${fmt(balance)}</td>
+  </tr>`;
+
+  document.getElementById('earn-detail-body').innerHTML = rows + totalRow + balRow;
+  document.getElementById('earn-detail-modal').classList.add('open');
 }
 
 function deleteTx(id) {
