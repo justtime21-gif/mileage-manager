@@ -11,6 +11,7 @@ const REQUIRED_HEADERS = {
 const OPTIONAL_HEADERS = {
   sentDate: ['발송일', '출고일', '배송일', 'date', 'sentdate'],
   requestMonth: ['월', '신청월', '발송월', 'month'],
+  branch: ['영업본부', '본부', '지점'],
 };
 
 module.exports = async (req, res) => {
@@ -130,6 +131,7 @@ function normalizeSheetRows(values) {
       item: value('item'),
       quantity: parseQuantity(value('quantity')),
       applicant: value('applicant'),
+      branch: value('branch'),
       rawStatus: value('status'),
       sentDate: normalizeDate(value('sentDate')) || dispatch.date,
       requestMonth: normalizeMonth(value('requestMonth')),

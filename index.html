@@ -1562,13 +1562,19 @@ function findClinicExactByName(value) {
   return clinics.find(clinic => normalizeClinicName(clinic.name) === normalized) || null;
 }
 
+function isHeadOfficeDispatchRecord(record) {
+  const branch = normalizeClinicName(record.branch);
+  return !String(record.clinicName || '').trim() || branch === '서울강서지점';
+}
+
 function getPaperCupDashboardRows() {
   const records = (dispatchSyncState.records || []).filter(record => record.isPaperCup);
   const review = [...(dispatchSyncState.unmatchedRecords || [])]
-    .filter(record => record.isPaperCup)
+    .filter(record => record.isPaperCup && !isHeadOfficeDispatchRecord(record))
     .map(record => ({ ...record, reviewReason: record.reviewReason || '시트 행을 확인하세요.' }));
   const valid = [];
   records.forEach(record => {
+    if (isHeadOfficeDispatchRecord(record)) return;
     if (record.status === 'review') return;
     const clinic = findClinicExactByName(record.clinicName);
     if (!clinic) review.push({ ...record, reviewReason: '앱 거래처와 정확히 일치하지 않습니다.' });
@@ -3289,8 +3295,9 @@ function renderPromoTrack() {
 
 function getPromoSheetRows(year) {
   const valid = [];
-  const review = [...(dispatchSyncState.unmatchedRecords || [])];
+  const review = [...(dispatchSyncState.unmatchedRecords || [])].filter(record => !isHeadOfficeDispatchRecord(record));
   (dispatchSyncState.records || []).forEach(record => {
+    if (isHeadOfficeDispatchRecord(record)) return;
     if (record.status === 'review') return;
     const clinic = findClinicExactByName(record.clinicName);
     if (!clinic) {
