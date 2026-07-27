@@ -3077,7 +3077,7 @@ function renderReport() {
   const rowH = 40;
   const itemRows = Math.max(d.items.length, 1);
   const spendRows = Math.max(d.spendRows.length, 1);
-  const H = 140 + (itemRows + 3) * rowH + 54 + (spendRows + 2) * rowH + 108;
+  const H = 140 + (itemRows + 3) * rowH + 54 + (spendRows + 2) * rowH + 28;
 
   const canvas = document.getElementById('report-canvas');
   const scale = 2;
@@ -3149,8 +3149,8 @@ function renderReport() {
   } else {
     drawRow(['처방 내역 없음', '', '', '', ''], '#ffffff', '#9ca3af', false);
   }
+  drawRow(['누적 마일리지 (차감 반영)', '', '', '', fmtNum(d.balance)], '#fce4d6', '#c55a11', true);
   drawRow(['처방액 합계', '', '', fmtNum(d.monthTotal), fmtNum(d.monthMileage)], '#ddebf7', '#1f4e79', true);
-  drawRow([`누적 마일리지 (적립률 ${d.rate}%${d.initial > 0 ? ', 이전잔액 포함' : ''})`, '', '', '', fmtNum(d.initial + d.earned)], '#fce4d6', '#c55a11', true);
 
   // 판촉물 차감
   y += 30;
@@ -3202,19 +3202,6 @@ function renderReport() {
   }
   drawSRow(['차감 합계 (누적)', '', '', '', fmtNum(d.spent)], '#ddebf7', '#1f4e79', true);
 
-  // 최종 잔액
-  y += 16;
-  ctx.fillStyle = '#fce4d6';
-  ctx.fillRect(tX, y, tW, 52);
-  ctx.strokeStyle = '#f4b183';
-  ctx.strokeRect(tX, y, tW, 52);
-  ctx.fillStyle = '#c55a11';
-  ctx.font = `bold 20px ${F}`;
-  ctx.fillText('마일리지 최종 잔액', tX + 14, y + 34);
-  ctx.textAlign = 'right';
-  ctx.font = `bold 24px ${F}`;
-  ctx.fillText(fmtNum(d.balance) + ' 원', tX + tW - 14, y + 35);
-  ctx.textAlign = 'left';
 }
 
 function downloadReportImage() {
@@ -3758,11 +3745,11 @@ function showEarnDetail(txId) {
   </tr>`;
 
   const balRow = `<tr style="background:#fff3e0;font-weight:700;color:#e65100">
-    <td colspan="4" style="padding:9px 12px">누적 마일리지 (적립률 ${rate}%, 이전잔액 포함)</td>
+    <td colspan="4" style="padding:9px 12px">누적 마일리지 (차감 반영)</td>
     <td style="padding:9px 8px;text-align:right">${fmt(balance)}</td>
   </tr>`;
 
-  document.getElementById('earn-detail-body').innerHTML = rows + totalRow + balRow;
+  document.getElementById('earn-detail-body').innerHTML = rows + balRow + totalRow;
   document.getElementById('earn-detail-modal').classList.add('open');
 }
 
