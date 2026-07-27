@@ -5,6 +5,7 @@ const REQUIRED_HEADERS = {
   item: ['품목', '발송품목', '상품', '항목', 'item', 'product'],
   quantity: ['수량', '발주수량', 'qty', 'quantity'],
   status: ['발송상태', '배송상태', '출고상황', '상태', 'status'],
+  applicant: ['신청인', '담당자'],
 };
 
 const OPTIONAL_HEADERS = {
@@ -18,7 +19,7 @@ module.exports = async (req, res) => {
     const config = getConfig();
     const accessToken = await getAccessToken(config);
     const values = await readSheet(config, accessToken);
-    const result = normalizeSheetRows(values);
+    const result = filterByApplicant(normalizeSheetRows(values), config.applicantName);
     return res.status(200).json({
       syncedAt: new Date().toISOString(),
       records: result.records,
@@ -37,13 +38,14 @@ function getConfig() {
   const range = process.env.GOOGLE_SHEETS_RANGE;
   const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const privateKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(/\\n/g, '\n');
-  if (!spreadsheetId || !range || !clientEmail || !privateKey) {
+  const applicantName = process.env.GOOGLE_SHEETS_APPLICANT_NAME?.trim();
+  if (!spreadsheetId || !range || !clientEmail || !privateKey || !applicantName) {
     const error = new Error('Google Sheets configuration is missing');
     error.statusCode = 503;
     error.publicMessage = '구글시트 연동 설정이 아직 완료되지 않았습니다.';
     throw error;
   }
-  return { spreadsheetId, range, clientEmail, privateKey };
+  return { spreadsheetId, range, clientEmail, privateKey, applicantName };
 }
 
 async function getAccessToken(config) {
@@ -126,6 +128,7 @@ function normalizeSheetRows(values) {
       clinicName: value('clinic'),
       item: value('item'),
       quantity: parseQuantity(value('quantity')),
+      applicant: value('applicant'),
       rawStatus: value('status'),
       sentDate: normalizeDate(value('sentDate')) || dispatch.date,
     };
@@ -141,16 +144,31 @@ function normalizeSheetRows(values) {
     records.push(record);
   });
 
-  const paperCupRecords = records.filter(record => record.isPaperCup);
   return {
     records,
     unmatchedRecords,
-    summary: {
-      total: records.length,
-      paperCupPending: paperCupRecords.filter(record => record.status === 'pending').length,
-      paperCupCompleted: paperCupRecords.filter(record => record.status === 'completed').length,
-      review: unmatchedRecords.length,
-    },
+    summary: buildSummary(records, unmatchedRecords),
+  };
+}
+
+function filterByApplicant(result, applicantName) {
+  const normalizedApplicant = normalizeApplicant(applicantName);
+  const records = result.records.filter(record => normalizeApplicant(record.applicant) === normalizedApplicant);
+  const unmatchedRecords = result.unmatchedRecords.filter(record => normalizeApplicant(record.applicant) === normalizedApplicant);
+  return { records, unmatchedRecords, summary: buildSummary(records, unmatchedRecords) };
+}
+
+function normalizeApplicant(value) {
+  return String(value || '').replace(/\s/g, '').toLowerCase();
+}
+
+function buildSummary(records, unmatchedRecords) {
+  const paperCupRecords = records.filter(record => record.isPaperCup);
+  return {
+    total: records.length,
+    paperCupPending: paperCupRecords.filter(record => record.status === 'pending').length,
+    paperCupCompleted: paperCupRecords.filter(record => record.status === 'completed').length,
+    review: unmatchedRecords.length,
   };
 }
 
@@ -199,11 +217,11 @@ function getReviewReason(record) {
 }
 
 function displayHeader(key) {
-  return { clinic: '요양기관명', item: '항목', quantity: '발주수량', status: '출고 상황' }[key];
+  return { clinic: '요양기관명', item: '항목', quantity: '발주수량', status: '출고 상황', applicant: '신청인' }[key];
 }
 
 function emptySummary() {
   return { total: 0, paperCupPending: 0, paperCupCompleted: 0, review: 0 };
 }
 
-module.exports._test = { normalizeSheetRows, normalizeStatus, normalizeDate, findHeaderRow };
+module.exports._test = { normalizeSheetRows, normalizeStatus, normalizeDate, findHeaderRow, filterByApplicant };
