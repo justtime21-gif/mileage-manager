@@ -660,6 +660,7 @@
       <div style="display:flex;gap:0;border-bottom:2px solid var(--gray-200);margin-bottom:20px;overflow-x:auto">
         <button id="stab-data"       class="stab active" onclick="showSettingsTab('data')">💾 데이터 관리</button>
         <button id="stab-schedule"   class="stab"        onclick="showSettingsTab('schedule')">📅 신청일정</button>
+        <button id="stab-addresses"  class="stab"        onclick="showSettingsTab('addresses')">📍 거래선 주소</button>
         <button id="stab-rx-drugs"   class="stab"        onclick="showSettingsTab('rx-drugs')">💊 처방약품</button>
         <button id="stab-promo"      class="stab"        onclick="showSettingsTab('promo')">📦 판촉물 목록</button>
         <button id="stab-admin"      class="stab"        onclick="showSettingsTab('admin')">👤 관리자</button>
@@ -683,6 +684,26 @@
               </div>
               <button class="btn btn-outline" onclick="document.getElementById('import-modal').classList.add('open')" style="flex-shrink:0;margin-left:16px">가져오기</button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 탭: 거래선 주소 -->
+      <div id="stab-panel-addresses" style="display:none">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+            <div>
+              <div class="card-title" style="margin-bottom:4px">📍 거래선 수령지 주소</div>
+              <div class="text-sm">발송 체크 및 구글시트 수령지 주소에 사용할 거래선 주소를 미리 등록합니다.</div>
+            </div>
+            <button class="btn btn-primary" onclick="saveClinicAddresses()">주소 저장</button>
+          </div>
+          <input id="clinic-address-filter" class="search-input" placeholder="거래선 또는 본부 검색" oninput="renderClinicAddresses(this.value)" style="margin-bottom:12px">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>거래선</th><th>영업본부</th><th>수령지 주소</th></tr></thead>
+              <tbody id="clinic-address-table-body"></tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -1346,15 +1367,41 @@ function navigate(page) {
   if (page === 'promo-items') renderPromoItems();
   if (page === 'history') { renderHistoryFilters(); renderHistory(); }
   if (page === 'promo-track') { renderPromoTrack(); loadDispatchStatus(); }
-  if (page === 'settings') { renderRxDrugs(); renderPromoItems(); renderOrderDateList(); }
+  if (page === 'settings') { renderRxDrugs(); renderPromoItems(); renderOrderDateList(); renderClinicAddresses(); }
 }
 
 function showSettingsTab(tab) {
-  ['data', 'schedule', 'rx-drugs', 'promo', 'admin'].forEach(t => {
+  ['data', 'schedule', 'addresses', 'rx-drugs', 'promo', 'admin'].forEach(t => {
     document.getElementById('stab-' + t).classList.toggle('active', t === tab);
     document.getElementById('stab-panel-' + t).style.display = t === tab ? '' : 'none';
   });
   if (tab === 'schedule') renderOrderDateList();
+  if (tab === 'addresses') renderClinicAddresses();
+}
+
+function renderClinicAddresses(filter = '') {
+  const root = document.getElementById('clinic-address-table-body');
+  if (!root) return;
+  const keyword = filter.trim().toLowerCase();
+  const list = [...clinics]
+    .filter(clinic => !keyword || clinic.name.toLowerCase().includes(keyword) || (clinic.branch || '').toLowerCase().includes(keyword))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  root.innerHTML = list.length ? list.map(clinic => `<tr>
+    <td><strong>${escapeHtml(clinic.name)}</strong></td>
+    <td>${escapeHtml(clinic.branch || '-')}</td>
+    <td><input data-clinic-address="${clinic.id}" value="${escapeHtml(clinic.address || '')}" placeholder="예: 서울특별시 …" style="width:100%;min-width:280px;padding:8px;border:1px solid var(--gray-300);border-radius:7px;font:inherit"></td>
+  </tr>`).join('') : '<tr><td colspan="3" style="text-align:center;color:var(--gray-400);padding:24px">검색 결과가 없습니다.</td></tr>';
+}
+
+function saveClinicAddresses() {
+  let changed = 0;
+  document.querySelectorAll('[data-clinic-address]').forEach(input => {
+    const clinic = clinics.find(item => item.id === input.dataset.clinicAddress);
+    const address = input.value.trim();
+    if (clinic && clinic.address !== address) { clinic.address = address; changed++; }
+  });
+  if (changed) save();
+  alert(changed ? `✅ ${changed}개 거래선의 주소를 저장했습니다.` : '변경된 주소가 없습니다.');
 }
 
 // ===== 판촉물 신청 일정 =====
