@@ -3200,7 +3200,7 @@ function renderReport() {
   } else {
     drawSRow(['', '차감 내역 없음', '', '', ''], '#ffffff', '#9ca3af', false);
   }
-  drawSRow(['차감 합계 (누적)', '', '', '', fmtNum(d.spent)], '#ddebf7', '#1f4e79', true);
+  drawSRow(['새 판촉물 차감 합계', '', '', '', fmtNum(d.monthSpend)], '#ddebf7', '#1f4e79', true);
 
   // 최종 잔액 계산식: 이전 차감 반영 잔액 + 최신 처방 적립 - 이후 판촉물 차감
   const openingBalance = d.balance - d.monthMileage + d.monthSpend;
