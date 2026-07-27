@@ -628,6 +628,15 @@
         </div>
       </div>
 
+      <div class="card" id="pt-sheet-review-card" style="margin-bottom:16px;display:none">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <h3 style="margin:0">⚠️ 시트 확인 필요</h3>
+          <span id="pt-sheet-review-count" style="color:var(--danger);font-weight:700;font-size:14px"></span>
+        </div>
+        <p style="margin:0 0 10px;color:var(--gray-500);font-size:13px">거래처명 매칭, 출고 상황 또는 날짜를 확인하면 다음 동기화 때 체크리스트에 반영됩니다.</p>
+        <div id="pt-sheet-review-list"></div>
+      </div>
+
       <!-- 거래선별 이력 -->
       <div class="card">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
@@ -3208,6 +3217,7 @@ function renderPromoTrack() {
   renderPromoChecklist(year);
   renderPromoHistory();
   renderPromoSheetStatus(year);
+  renderPromoSheetReview(year);
 }
 
 function getPromoSheetRows(year) {
@@ -3248,6 +3258,25 @@ function renderPromoSheetStatus(year) {
   const pending = rows.valid.filter(row => row.status === 'pending').length;
   const review = rows.review.length;
   root.innerHTML = `<div class="alert alert-info" style="margin:0;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><strong>구글시트 연동</strong><span>${year}년 완료 ${completed}건 · 대기 ${pending}건</span>${review ? `<span style="color:var(--danger)">확인 필요 ${review}건</span>` : ''}<span style="margin-left:auto;font-size:12px">${formatSyncTime(dispatchSyncState.syncedAt)} 동기화</span></div>`;
+}
+
+function renderPromoSheetReview(year) {
+  const card = document.getElementById('pt-sheet-review-card');
+  const count = document.getElementById('pt-sheet-review-count');
+  const root = document.getElementById('pt-sheet-review-list');
+  if (!card || !count || !root) return;
+  const review = getPromoSheetRows(year).review;
+  card.style.display = review.length ? '' : 'none';
+  count.textContent = `${review.length}건`;
+  root.innerHTML = review.map(row => {
+    const date = row.sentDate || (row.requestMonth ? `${row.requestMonth}월` : '날짜 없음');
+    return `<div style="display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--gray-100);font-size:13px;flex-wrap:wrap">
+      <strong style="min-width:130px">${escapeHtml(row.clinicName || '거래처명 없음')}</strong>
+      <span style="color:var(--gray-600)">${escapeHtml(row.item || '품목 없음')}${row.quantity > 1 ? ` ×${row.quantity}` : ''}</span>
+      <span style="color:var(--gray-500)">${escapeHtml(date)} · ${escapeHtml(row.rawStatus || '출고 상황 없음')}</span>
+      <span style="margin-left:auto;color:var(--danger);font-size:12px">${escapeHtml(row.reviewReason || '확인 필요')}</span>
+    </div>`;
+  }).join('');
 }
 
 function renderPromoChecklist(year) {
