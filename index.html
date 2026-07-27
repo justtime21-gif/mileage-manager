@@ -1138,6 +1138,19 @@ function save() {
   DB.set('appSettings', appSettings);
 }
 
+function migrateClinicNames() {
+  let changed = false;
+  clinics.forEach(clinic => {
+    if (clinic.name === '이안치과') {
+      clinic.name = '교하이안치과';
+      changed = true;
+    }
+  });
+  if (changed) DB.set('clinics', clinics);
+}
+
+migrateClinicNames();
+
 // 슬래시로 묶여 있던 판촉물을 개별 품목으로 분리 (기존 저장 데이터 1회 마이그레이션)
 function migrateCombinedPromoItems() {
   const splits = {
@@ -1554,7 +1567,8 @@ function isIsoDate(value) {
 }
 
 function normalizeClinicName(value) {
-  return String(value || '').replace(/\s/g, '').toLowerCase();
+  const normalized = String(value || '').replace(/\s/g, '').toLowerCase();
+  return normalized === '이안치과' ? '교하이안치과' : normalized;
 }
 
 function findClinicExactByName(value) {
