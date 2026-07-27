@@ -79,6 +79,7 @@ index.html          앱 전체 (HTML + CSS + JS, 약 2,400줄)
 | `renderReport()` | Canvas API로 카톡 전송용 보고서 이미지 생성 |
 | `exportData()` / `importData()` | JSON 백업 내보내기/가져오기 |
 | `parseDispatchText(text)` | 구글시트·자유형식 발송 텍스트 파싱 |
+| `loadDispatchStatus()` | 읽기 전용 구글시트에서 종이컵 발송 상태를 동기화 |
 | `migrateBrochureDrugs()` | 처방약품 데이터 마이그레이션 (앱 로드 시 1회) |
 | `migrateCombinedPromoItems()` | 판촉물 데이터 마이그레이션 (앱 로드 시 1회) |
 | `save()` | 모든 데이터를 localStorage에 일괄 저장 |
@@ -87,10 +88,10 @@ index.html          앱 전체 (HTML + CSS + JS, 약 2,400줄)
 
 | 화면 ID | 메뉴 | 역할 |
 |---------|------|------|
-| `dashboard` | 대시보드 | 잔액 TOP10, 최근 이력 |
+| `dashboard` | 대시보드 | 마일리지 정리 필요 및 종이컵 발송 업무 목록 |
 | `clinics` | 거래선 관리 | CRUD + 보고서 생성 |
-| `prescriptions` | 처방 입력 | OCR + 약품별 처방량 입력 |
-| `redeem` | 판촉물 차감 | 카톡 파싱 + 마일리지 차감 |
+| `prescriptions` / `history` | 마일리지 | 처방 입력 및 적립·차감 이력 조회 |
+| `redeem` / `promo-track` | 발송 관리 | 카톡 파싱, 판촉물 차감 및 발송 현황 |
 | `rx-drugs` | 처방약품 관리 | 약품명/보험코드/단가 관리 |
 | `promo-items` | 판촉물 목록 | 품목/가격 관리 + 이미지 내보내기 |
 | `history` | 이력 조회 | 거래선·유형·월별 필터 |
@@ -121,5 +122,6 @@ CSS 변수는 `:root`에 정의됨:
 
 - 데이터는 **브라우저 localStorage에만 저장**됨. 다른 기기/브라우저에서 보려면 내보내기/가져오기 필수.
 - OCR은 **네이버 클로바 OCR**을 사용 (`api/ocr.js` 서버리스 함수 경유). Vercel 환경변수 `CLOVA_OCR_SECRET`, `CLOVA_OCR_URL` 필요. **GitHub Pages는 서버리스 함수가 없어 OCR이 동작하지 않음** — Vercel 배포(`mileage-manager.vercel.app`)에서만 사용 가능.
+- 종이컵 업무 목록은 `api/dispatch-status.js`가 구글시트를 읽기 전용으로 조회한다. `.env.example`의 `GOOGLE_SHEETS_*`, `GOOGLE_SERVICE_ACCOUNT_*` 값을 Vercel 환경변수로 설정하고, 시트를 서비스 계정 이메일에 **뷰어**로 공유해야 한다. 시트 첫 행에는 `거래처`, `품목`, `수량`, `발송상태`, `발송일` 열이 필요하다.
 - `uid()` 함수로 ID 생성. 기존 데이터의 id를 임의 변경하면 연결이 끊어짐.
 - 코드 수정 후 반드시 `save()` 호출해야 localStorage에 반영됨.

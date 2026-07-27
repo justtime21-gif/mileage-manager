@@ -212,6 +212,7 @@
   }
 
   @media (max-width: 640px) {
+    #dash-worklists { grid-template-columns: 1fr !important; }
     /* 사이드바 → 하단 탭 바 */
     .sidebar {
       position: fixed;
@@ -303,25 +304,19 @@
       <small>거래선 처방 마일리지</small>
     </div>
     <nav>
-      <div class="nav-item active" onclick="navigate('dashboard')">
+      <div class="nav-item active" data-nav="dashboard" onclick="navigate('dashboard')">
         <span class="nav-icon">🏠</span><span>대시보드</span>
       </div>
-      <div class="nav-item" onclick="navigate('clinics')">
-        <span class="nav-icon">🏥</span><span>거래선 관리</span>
+      <div class="nav-item" data-nav="clinics" onclick="navigate('clinics')">
+        <span class="nav-icon">🏥</span><span>거래처</span>
       </div>
-      <div class="nav-item" onclick="navigate('prescriptions')">
-        <span class="nav-icon">📋</span><span>처방 입력</span>
+      <div class="nav-item" data-nav="mileage" onclick="navigate('prescriptions')">
+        <span class="nav-icon">📋</span><span>마일리지</span>
       </div>
-      <div class="nav-item" onclick="navigate('redeem')">
-        <span class="nav-icon">🎁</span><span>판촉물 차감</span>
+      <div class="nav-item" data-nav="dispatch" onclick="navigate('promo-track')">
+        <span class="nav-icon">🚚</span><span>발송 관리</span>
       </div>
-      <div class="nav-item" onclick="navigate('history')">
-        <span class="nav-icon">📊</span><span>이력 조회</span>
-      </div>
-      <div class="nav-item" onclick="navigate('promo-track')">
-        <span class="nav-icon">🚚</span><span>발송 현황</span>
-      </div>
-      <div class="nav-item" onclick="navigate('settings')">
+      <div class="nav-item" data-nav="settings" onclick="navigate('settings')">
         <span class="nav-icon">⚙️</span><span>설정</span>
       </div>
     </nav>
@@ -341,6 +336,7 @@
       </div>
       <div id="dash-order-schedule" style="margin-bottom:12px"></div>
       <div class="stats-grid" id="dash-stats"></div>
+      <div id="dash-worklists" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:16px"></div>
       <div class="card" style="margin-top:4px">
         <div style="text-align:center;margin-bottom:16px">
           <div style="font-size:18px;font-weight:700;color:var(--gray-800);margin-bottom:4px">📋 빠른 발송 입력</div>
@@ -405,6 +401,7 @@
           <h2>처방 입력</h2>
           <p>월별 원외처방 통계를 입력하여 마일리지를 적립합니다</p>
         </div>
+        <button class="btn btn-outline" onclick="navigate('history')">이력 조회</button>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div class="card">
@@ -495,9 +492,9 @@
 
     <!-- Redeem -->
     <div id="page-redeem" class="page">
-      <div class="page-header">
-        <h2>판촉물 차감</h2>
-        <p>마일리지로 판촉물을 구매하고 잔액을 차감합니다</p>
+      <div class="page-header flex justify-between items-center">
+        <div><h2>판촉물 차감</h2><p>마일리지로 판촉물을 구매하고 잔액을 차감합니다</p></div>
+        <button class="btn btn-outline" onclick="navigate('promo-track')">발송 현황</button>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div class="card">
@@ -573,9 +570,9 @@
 
     <!-- History -->
     <div id="page-history" class="page">
-      <div class="page-header">
-        <h2>이력 조회</h2>
-        <p>전체 적립 및 차감 내역</p>
+      <div class="page-header flex justify-between items-center">
+        <div><h2>이력 조회</h2><p>전체 적립 및 차감 내역</p></div>
+        <button class="btn btn-outline" onclick="navigate('prescriptions')">처방 입력</button>
       </div>
       <div class="card" style="margin-bottom:16px">
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;align-items:end">
@@ -610,9 +607,9 @@
 
     <!-- 발송 현황 -->
     <div id="page-promo-track" class="page">
-      <div class="page-header">
-        <h2>🚚 판촉물 발송 현황</h2>
-        <p>월별 발송 체크리스트 및 거래선별 이력</p>
+      <div class="page-header flex justify-between items-center">
+        <div><h2>🚚 판촉물 발송 현황</h2><p>월별 발송 체크리스트 및 거래선별 이력</p></div>
+        <button class="btn btn-outline" onclick="navigate('redeem')">판촉물 차감</button>
       </div>
 
       <!-- 연간 체크리스트 -->
@@ -1305,10 +1302,8 @@ function navigate(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
-  const navItems = document.querySelectorAll('.nav-item');
-  const pageOrder = ['dashboard', 'clinics', 'prescriptions', 'redeem', 'history', 'promo-track', 'settings'];
-  const idx = pageOrder.indexOf(page);
-  if (idx >= 0) navItems[idx].classList.add('active');
+  const section = ({ prescriptions: 'mileage', history: 'mileage', redeem: 'dispatch', 'promo-track': 'dispatch' })[page] || page;
+  document.querySelector(`.nav-item[data-nav="${section}"]`)?.classList.add('active');
 
   if (page === 'dashboard') renderDashboard();
   if (page === 'clinics') renderClinics();
@@ -1432,6 +1427,14 @@ function savePromoSheetUrl() {
 }
 
 // ===== DASHBOARD =====
+const DISPATCH_CACHE_KEY = 'mileage_dispatch_status_cache';
+let dispatchSyncState = loadDispatchCache();
+
+function loadDispatchCache() {
+  try { return JSON.parse(sessionStorage.getItem(DISPATCH_CACHE_KEY)) || { records: [], unmatchedRecords: [], summary: null }; }
+  catch { return { records: [], unmatchedRecords: [], summary: null }; }
+}
+
 function renderDashboard() {
   const d = new Date();
   document.getElementById('dash-date').textContent = d.toLocaleDateString('ko-KR', { year:'numeric', month:'long', day:'numeric', weekday:'long' });
@@ -1449,6 +1452,153 @@ function renderDashboard() {
   `;
 
   renderOrderSchedule();
+  renderDashboardWorklists();
+  if (!dispatchSyncState.loading) loadDispatchStatus();
+}
+
+function getMileageReviewRows() {
+  const todayMs = new Date(`${today()}T00:00:00`).getTime();
+  return clinics.map(clinic => {
+    const earns = transactions.filter(t => t.clinicId === clinic.id && t.type === 'earn');
+    const rxEndDates = earns.map(t => t.rxEnd).filter(isIsoDate);
+    const earnedDates = earns.map(t => t.date).filter(isIsoDate);
+    const referenceDate = [...(rxEndDates.length ? rxEndDates : earnedDates)].sort().at(-1);
+    if (!referenceDate) return null;
+    const overdueDays = Math.floor((todayMs - new Date(`${referenceDate}T00:00:00`).getTime()) / 86400000);
+    return overdueDays >= 30 ? { clinic, referenceDate, overdueDays } : null;
+  }).filter(Boolean).sort((a, b) => b.overdueDays - a.overdueDays || a.clinic.name.localeCompare(b.clinic.name));
+}
+
+function isIsoDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value || '');
+}
+
+function normalizeClinicName(value) {
+  return String(value || '').replace(/\s/g, '').toLowerCase();
+}
+
+function findClinicExactByName(value) {
+  const normalized = normalizeClinicName(value);
+  return clinics.find(clinic => normalizeClinicName(clinic.name) === normalized) || null;
+}
+
+function getPaperCupDashboardRows() {
+  const records = (dispatchSyncState.records || []).filter(record => record.isPaperCup);
+  const review = [...(dispatchSyncState.unmatchedRecords || [])]
+    .filter(record => record.isPaperCup)
+    .map(record => ({ ...record, reviewReason: record.reviewReason || '시트 행을 확인하세요.' }));
+  const valid = [];
+  records.forEach(record => {
+    if (record.status === 'review') return;
+    const clinic = findClinicExactByName(record.clinicName);
+    if (!clinic) review.push({ ...record, reviewReason: '앱 거래처와 정확히 일치하지 않습니다.' });
+    else valid.push({ ...record, clinic });
+  });
+  const uniqueReview = [...new Map(review.map(record => [`${record.row || ''}:${record.clinicName}:${record.item}`, record])).values()];
+  return {
+    pending: valid.filter(record => record.status === 'pending').sort((a, b) => a.sentDate.localeCompare(b.sentDate)),
+    completed: valid.filter(record => record.status === 'completed').sort((a, b) => b.sentDate.localeCompare(a.sentDate)),
+    review: uniqueReview,
+  };
+}
+
+function renderDashboardWorklists() {
+  const root = document.getElementById('dash-worklists');
+  if (!root) return;
+  const mileage = getMileageReviewRows();
+  const cups = getPaperCupDashboardRows();
+  root.innerHTML = `
+    ${renderWorklistCard({
+      icon: '📋', title: '마일리지 정리 필요', tone: '#b45309', count: mileage.length,
+      subtitle: '마지막 처방 종료일(없으면 적립일) 후 30일 경과',
+      rows: mileage.slice(0, 6).map(row => ({
+        title: escapeHtml(row.clinic.name), detail: `${row.referenceDate} · ${row.overdueDays}일 경과`,
+        action: `openMileageClinic('${row.clinic.id}')`, actionLabel: '정리'
+      })), empty: '현재 정리 대상 거래처가 없습니다.'
+    })}
+    ${renderWorklistCard({
+      icon: '🥤', title: '종이컵 발송 대기', tone: '#b45309', count: cups.pending.length,
+      subtitle: dispatchSubtitle('시트 발송상태: 대기·신청·미발송'),
+      rows: cups.pending.slice(0, 6).map(row => dispatchRow(row, '발송 관리')), empty: dispatchEmptyText(), refreshable: true
+    })}
+    ${renderWorklistCard({
+      icon: '✅', title: '종이컵 발송 완료', tone: 'var(--primary)', count: cups.completed.length,
+      subtitle: '시트 발송상태: 완료·발송완료·발송',
+      rows: cups.completed.slice(0, 6).map(row => dispatchRow(row, '발송 이력')), empty: '완료로 기록된 종이컵 발송이 없습니다.'
+    })}
+    ${renderWorklistCard({
+      icon: '⚠️', title: '시트 확인 필요', tone: 'var(--danger)', count: cups.review.length,
+      subtitle: '거래처 매칭 또는 상태·날짜 확인 필요',
+      rows: cups.review.slice(0, 6).map(row => ({
+        title: escapeHtml(row.clinicName || '거래처명 없음'), detail: `${escapeHtml(row.item || '품목 없음')} · ${escapeHtml(row.reviewReason || '확인 필요')}`,
+        action: "navigate('promo-track')", actionLabel: '확인'
+      })), empty: '확인이 필요한 종이컵 시트 행이 없습니다.'
+    })}`;
+}
+
+function dispatchSubtitle(defaultText) {
+  if (dispatchSyncState.loading) return '구글시트 동기화 중…';
+  if (dispatchSyncState.error) return `연동 오류 · ${escapeHtml(dispatchSyncState.error)}`;
+  if (!dispatchSyncState.syncedAt) return '구글시트 연결 후 발송 현황을 표시합니다.';
+  return `${defaultText} · ${formatSyncTime(dispatchSyncState.syncedAt)} 동기화`;
+}
+
+function dispatchEmptyText() {
+  if (dispatchSyncState.loading) return '구글시트 발송 현황을 불러오는 중입니다.';
+  if (dispatchSyncState.error) return `시트 연동을 확인한 뒤 새로고침하세요. <button class="btn btn-outline btn-sm" onclick="loadDispatchStatus(true)">새로고침</button>`;
+  if (!dispatchSyncState.syncedAt) return '구글시트 연동 설정 후 새로고침하세요.';
+  return '발송 대기 중인 종이컵이 없습니다.';
+}
+
+function renderWorklistCard({ icon, title, tone, count, subtitle, rows, empty, refreshable = false }) {
+  const rowHtml = rows.length ? rows.map(row => `<div style="display:flex;gap:8px;align-items:center;padding:9px 0;border-top:1px solid var(--gray-100)">
+    <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.title}</div><div style="font-size:12px;color:var(--gray-500);margin-top:2px">${row.detail}</div></div>
+    <button class="btn btn-outline btn-sm" onclick="${row.action}">${row.actionLabel}</button>
+  </div>`).join('') : `<div style="font-size:13px;color:var(--gray-500);padding:12px 0">${empty}</div>`;
+  const refresh = refreshable ? `<button class="btn btn-outline btn-sm" onclick="loadDispatchStatus(true)" title="구글시트 새로고침">↻</button>` : '';
+  return `<section class="card" style="margin:0"><div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="font-size:18px">${icon}</span><strong style="font-size:15px">${title}</strong><span style="margin-left:auto;color:${tone};font-size:18px;font-weight:700">${count}</span>${refresh}</div><div style="font-size:12px;color:var(--gray-500);margin-bottom:8px">${subtitle}</div>${rowHtml}</section>`;
+}
+
+function dispatchRow(record, actionLabel) {
+  return {
+    title: escapeHtml(record.clinic.name),
+    detail: `${record.sentDate} · ${escapeHtml(record.item)} ${record.quantity > 1 ? `×${record.quantity}` : ''}`,
+    action: "navigate('promo-track')", actionLabel
+  };
+}
+
+function formatSyncTime(value) {
+  return new Date(value).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
+}
+
+function openMileageClinic(clinicId) {
+  navigate('prescriptions');
+  setTimeout(() => {
+    const select = document.getElementById('rx-clinic');
+    select.value = clinicId;
+    updateRxRate();
+    showPrevRxBtn();
+  }, 0);
+}
+
+async function loadDispatchStatus(force = false) {
+  if (dispatchSyncState.loading && !force) return;
+  dispatchSyncState = { ...dispatchSyncState, loading: true, error: '' };
+  renderDashboardWorklists();
+  try {
+    const response = await fetch('/api/dispatch-status', { headers: { Accept: 'application/json' } });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || '발송 시트 데이터를 불러오지 못했습니다.');
+    dispatchSyncState = { ...data, loading: false, error: '' };
+    sessionStorage.setItem(DISPATCH_CACHE_KEY, JSON.stringify(dispatchSyncState));
+  } catch (error) {
+    dispatchSyncState = { ...dispatchSyncState, loading: false, error: error.message || '구글시트 연동에 실패했습니다.' };
+  }
+  renderDashboardWorklists();
 }
 
 // ===== CLINICS =====
