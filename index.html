@@ -3029,10 +3029,10 @@ function getReportData() {
   const monthTotal = items.reduce((s, i) => s + i.amount, 0);
   const monthMileage = earnTxs.reduce((s, t) => s + t.amount, 0);
 
-  // 가장 최근 처방 rxStart 이후의 판촉물 차감
-  const refDate = latestEarnTx?.rxStart || latestEarnTx?.date || '';
+  // 최신 처방 종료 이후 새로 입력된 판촉물 차감만 보고서에 표시
+  const refDate = latestEarnTx?.rxEnd || latestEarnTx?.date || '';
   const spends = transactions.filter(t =>
-    t.clinicId === clinicId && t.type === 'spend' && (!refDate || t.date >= refDate)
+    t.clinicId === clinicId && t.type === 'spend' && (!refDate || t.date > refDate)
   );
   const spendRows = [];
   spends.forEach(t => (t.items || []).forEach(it => {
@@ -3077,7 +3077,7 @@ function renderReport() {
   const rowH = 40;
   const itemRows = Math.max(d.items.length, 1);
   const spendRows = Math.max(d.spendRows.length, 1);
-  const H = 140 + (itemRows + 3) * rowH + 54 + (spendRows + 2) * rowH + 168;
+  const H = 140 + (itemRows + 3) * rowH + 54 + (spendRows + 2) * rowH + 100;
 
   const canvas = document.getElementById('report-canvas');
   const scale = 2;
@@ -3149,8 +3149,8 @@ function renderReport() {
   } else {
     drawRow(['처방 내역 없음', '', '', '', ''], '#ffffff', '#9ca3af', false);
   }
-  drawRow(['누적 마일리지 (차감 반영)', '', '', '', fmtNum(d.balance)], '#fce4d6', '#c55a11', true);
   drawRow(['처방액 합계', '', '', fmtNum(d.monthTotal), fmtNum(d.monthMileage)], '#ddebf7', '#1f4e79', true);
+  drawRow(['누적 마일리지 (차감 반영)', '', '', '', fmtNum(d.balance)], '#fce4d6', '#c55a11', true);
 
   // 판촉물 차감
   y += 30;
@@ -3202,27 +3202,21 @@ function renderReport() {
   }
   drawSRow(['새 판촉물 차감 합계', '', '', '', fmtNum(d.monthSpend)], '#ddebf7', '#1f4e79', true);
 
-  // 최종 잔액 계산식: 이전 차감 반영 잔액 + 최신 처방 적립 - 이후 판촉물 차감
-  const openingBalance = d.balance - d.monthMileage + d.monthSpend;
+  // 최종 잔액
   y += 16;
   ctx.fillStyle = '#fff7ed';
-  ctx.fillRect(tX, y, tW, 132);
+  ctx.fillRect(tX, y, tW, 64);
   ctx.strokeStyle = '#fdba74';
   ctx.lineWidth = 2;
-  ctx.strokeRect(tX, y, tW, 132);
+  ctx.strokeRect(tX, y, tW, 64);
   ctx.lineWidth = 1;
   ctx.fillStyle = '#9a3412';
-  ctx.font = `bold 18px ${F}`;
-  ctx.fillText('마일리지 최종 잔액', tX + 16, y + 29);
-  ctx.font = `14px ${F}`;
-  ctx.fillStyle = '#7c2d12';
-  ctx.fillText(`이전 잔액 (기존 차감 반영) ${fmtNum(openingBalance)}원`, tX + 16, y + 56);
-  ctx.fillText(`+ 최신월 처방 적립 ${fmtNum(d.monthMileage)}원  (처방액 ${fmtNum(d.monthTotal)}원)`, tX + 16, y + 78);
-  ctx.fillText(`− 판촉물 차감 ${fmtNum(d.monthSpend)}원`, tX + 16, y + 100);
+  ctx.font = `bold 20px ${F}`;
+  ctx.fillText('마일리지 최종 잔액', tX + 16, y + 40);
   ctx.fillStyle = '#c2410c';
-  ctx.font = `bold 24px ${F}`;
+  ctx.font = `bold 30px ${F}`;
   ctx.textAlign = 'right';
-  ctx.fillText(`= ${fmtNum(d.balance)} 원`, tX + tW - 16, y + 119);
+  ctx.fillText(`${fmtNum(d.balance)} 원`, tX + tW - 16, y + 42);
   ctx.textAlign = 'left';
 
 }
@@ -3772,7 +3766,7 @@ function showEarnDetail(txId) {
     <td style="padding:9px 8px;text-align:right">${fmt(balance)}</td>
   </tr>`;
 
-  document.getElementById('earn-detail-body').innerHTML = rows + balRow + totalRow;
+  document.getElementById('earn-detail-body').innerHTML = rows + totalRow + balRow;
   document.getElementById('earn-detail-modal').classList.add('open');
 }
 
