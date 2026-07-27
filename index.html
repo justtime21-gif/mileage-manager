@@ -943,10 +943,8 @@
     <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
       <button class="btn btn-outline" onclick="closeReportModal()">닫기</button>
       <button class="btn btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="openSpendFromReport()">+ 차감 추가</button>
-      <button class="btn btn-outline" onclick="copyReportText()">📝 텍스트 복사</button>
       <button class="btn btn-accent" onclick="copyReportImage()">📋 이미지 복사</button>
-      <button class="btn btn-primary" onclick="downloadReportImage()">💾 이미지 저장</button>
-      <button class="btn btn-outline" onclick="savePromoListImage()" style="border-color:#059669;color:#059669">🖼️ 판촉물 목록</button>
+      <button class="btn btn-outline" onclick="copyReportPromoHistory()" style="border-color:#059669;color:#059669">🎁 판촉물 내역 복사</button>
     </div>
   </div>
 </div>
@@ -3229,24 +3227,15 @@ async function copyReportImage() {
   }
 }
 
-function copyReportText() {
+function copyReportPromoHistory() {
   const d = getReportData();
   if (!d) return;
-  let txt = `📋 ${d.c.name} 처방의약품 현황\n기간: ${d.periodStr}\n\n`;
-  if (d.items.length) {
-    d.items.forEach(it => { txt += `· ${it.name}: ${fmtNum(it.qty)} × ${fmtNum(it.price)}원 = ${fmtNum(it.amount)}원\n`; });
-    txt += `\n처방액 합계: ${fmtNum(d.monthTotal)}원\n이번 처방 적립 (${d.rate}%): ${fmtNum(d.monthMileage)}원\n`;
-  } else {
-    txt += '이번 처방 내역 없음\n';
-  }
-  txt += `누적 적립${d.initial > 0 ? ' (이전잔액 포함)' : ''}: ${fmtNum(d.initial + d.earned)}원\n`;
-  if (d.spendRows.length) {
-    txt += `\n🎁 판촉물 차감\n`;
-    d.spendRows.forEach(r => { txt += `· ${r.date?.slice(2)} ${r.name} × ${r.qty} = ${fmtNum(r.amount)}원\n`; });
-  }
-  txt += `누적 차감: ${fmtNum(d.spent)}원\n\n💰 마일리지 최종 잔액: ${fmtNum(d.balance)}원`;
+  if (!d.spendRows.length) return alert('복사할 판촉물 내역이 없습니다.');
+  const txt = `🎁 ${d.c.name} 판촉물 내역\n\n` + d.spendRows
+    .map(row => `· ${row.date ? row.date.replace(/-/g, '.') : '날짜 미정'} ${row.name} × ${row.qty || 1}`)
+    .join('\n');
   navigator.clipboard.writeText(txt)
-    .then(() => alert('✅ 텍스트가 복사되었습니다.\n카톡 채팅창에 붙여넣기 하세요.'))
+    .then(() => alert('✅ 판촉물 내역이 복사되었습니다.\n카톡 채팅창에 붙여넣기 하세요.'))
     .catch(() => alert('복사에 실패했습니다.'));
 }
 
