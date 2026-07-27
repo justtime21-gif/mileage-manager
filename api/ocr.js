@@ -4,8 +4,21 @@ module.exports = async (req, res) => {
 
   // CRM 환경변수 이름 우선, 마일리지 앱 이름 fallback
   const secret = process.env.CLOVA_OCR_SECRET_KEY || process.env.CLOVA_OCR_SECRET;
-  const url = process.env.CLOVA_OCR_INVOKE_URL || process.env.CLOVA_OCR_URL;
-  if (!secret || !url) return res.status(500).json({ error: 'OCR 서버 환경변수(CLOVA_OCR_SECRET_KEY, CLOVA_OCR_INVOKE_URL)가 설정되지 않았습니다.' });
+  const rawUrl = process.env.CLOVA_OCR_INVOKE_URL || process.env.CLOVA_OCR_URL;
+  if (!secret || !rawUrl) return res.status(500).json({ error: 'OCR 서버 환경변수(CLOVA_OCR_SECRET_KEY, CLOVA_OCR_INVOKE_URL)가 설정되지 않았습니다.' });
+
+  // Vercel 환경변수에 따옴표, 공백 또는 안내 문구가 함께 저장되면 fetch가
+  // "The string did not match the expected pattern"만 반환한다. 실제 주소는
+  // 절대 응답에 포함하지 않고, 관리자에게 수정할 항목만 안내한다.
+  const url = String(rawUrl).trim().replace(/^['\"]|['\"]$/g, '');
+  try {
+    const endpoint = new URL(url);
+    if (endpoint.protocol !== 'https:') throw new Error('non-https');
+  } catch {
+    return res.status(500).json({
+      error: 'OCR 호출 주소 설정이 올바르지 않습니다. Vercel의 CLOVA_OCR_INVOKE_URL에 CLOVA OCR Invoke URL 전체(https://로 시작)를 따옴표 없이 다시 저장해 주세요.',
+    });
+  }
 
   const { images } = req.body || {};
   if (!Array.isArray(images) || !images.length) return res.status(400).json({ error: '이미지가 없습니다.' });
