@@ -623,18 +623,17 @@
           <span style="font-size:13px;color:var(--gray-400)">✅ 완료 &nbsp; 🟧 시트 발송대기 &nbsp; ⬜ 미발송 (클릭 → 입력)</span>
         </div>
         <div id="pt-sheet-status" style="margin-bottom:12px"></div>
+        <div id="pt-sheet-review-card" style="margin:0 0 12px;padding:12px 14px;border:1px solid #fecaca;border-radius:8px;background:#fffafa;display:none">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <strong>⚠️ 시트 확인 필요</strong>
+            <span id="pt-sheet-review-count" style="color:var(--danger);font-weight:700;font-size:14px"></span>
+          </div>
+          <p style="margin:0 0 8px;color:var(--gray-500);font-size:12px">거래처명 매칭, 출고 상황 또는 날짜를 확인하면 다음 동기화 때 체크리스트에 반영됩니다.</p>
+          <div id="pt-sheet-review-list"></div>
+        </div>
         <div style="overflow-x:auto">
           <div id="pt-checklist"></div>
         </div>
-      </div>
-
-      <div class="card" id="pt-sheet-review-card" style="margin-bottom:16px;display:none">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-          <h3 style="margin:0">⚠️ 시트 확인 필요</h3>
-          <span id="pt-sheet-review-count" style="color:var(--danger);font-weight:700;font-size:14px"></span>
-        </div>
-        <p style="margin:0 0 10px;color:var(--gray-500);font-size:13px">거래처명 매칭, 출고 상황 또는 날짜를 확인하면 다음 동기화 때 체크리스트에 반영됩니다.</p>
-        <div id="pt-sheet-review-list"></div>
       </div>
 
       <!-- 거래선별 이력 -->
