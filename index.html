@@ -1149,6 +1149,28 @@ function migrateClinicNames() {
 
 migrateClinicNames();
 
+function migrateRegularDeliveryClinics() {
+  const defaults = [
+    { name: '골드플러스치과', branch: '은평지점', regularPromos: ['종이컵'] },
+    { name: '바른우리치과', branch: '은평지점', regularPromos: ['종이컵'] },
+    { name: '운정뿌리사랑치과', branch: '파주지점', regularPromos: ['종이컵'] },
+    { name: '하얀미소치과', branch: '서대문지점', regularPromos: ['종이컵', '각티슈'] },
+  ];
+  let changed = false;
+  defaults.forEach(item => {
+    const existing = clinics.find(clinic => clinic.name.replace(/\s/g, '') === item.name.replace(/\s/g, ''));
+    if (existing) return;
+    clinics.push({
+      id: uid(), name: item.name, branch: item.branch, rate: 10, initialBalance: 0,
+      regularPromos: item.regularPromos, noMileage: true, dualTrack: false, address: '', startYm: '2026-07'
+    });
+    changed = true;
+  });
+  if (changed) DB.set('clinics', clinics);
+}
+
+migrateRegularDeliveryClinics();
+
 // 슬래시로 묶여 있던 판촉물을 개별 품목으로 분리 (기존 저장 데이터 1회 마이그레이션)
 function migrateCombinedPromoItems() {
   const splits = {
@@ -1577,7 +1599,7 @@ function findClinicExactByName(value) {
 function isHeadOfficeDispatchRecord(record) {
   const branch = normalizeClinicName(record.branch);
   const clinicName = normalizeClinicName(record.clinicName);
-  return !clinicName || branch === '서울강서지점' || branch.includes('사무실') || clinicName.includes('사무실');
+  return !clinicName || branch.includes('서울강서지점') || clinicName.includes('서울강서지점') || branch.includes('사무실') || clinicName.includes('사무실');
 }
 
 function getPaperCupDashboardRows() {
