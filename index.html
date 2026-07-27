@@ -1564,7 +1564,8 @@ function findClinicExactByName(value) {
 
 function isHeadOfficeDispatchRecord(record) {
   const branch = normalizeClinicName(record.branch);
-  return !String(record.clinicName || '').trim() || branch === '서울강서지점';
+  const clinicName = normalizeClinicName(record.clinicName);
+  return !clinicName || branch === '서울강서지점' || branch.includes('사무실') || clinicName.includes('사무실');
 }
 
 function getPaperCupDashboardRows() {
