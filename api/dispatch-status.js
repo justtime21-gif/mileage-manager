@@ -1,10 +1,13 @@
 const crypto = require('crypto');
 
 const REQUIRED_HEADERS = {
-  clinic: ['거래처', '거래선', '병원', '치과', 'clinic', 'account'],
-  item: ['품목', '발송품목', '상품', 'item', 'product'],
-  quantity: ['수량', 'qty', 'quantity'],
-  status: ['발송상태', '배송상태', '상태', 'status'],
+  clinic: ['거래처', '거래선', '요양기관명', '병원', '치과', 'clinic', 'account'],
+  item: ['품목', '발송품목', '상품', '항목', 'item', 'product'],
+  quantity: ['수량', '발주수량', 'qty', 'quantity'],
+  status: ['발송상태', '배송상태', '출고상황', '상태', 'status'],
+};
+
+const OPTIONAL_HEADERS = {
   sentDate: ['발송일', '출고일', '배송일', 'date', 'sentdate'],
 };
 
@@ -90,12 +93,22 @@ async function readSheet(config, accessToken) {
 
 function normalizeSheetRows(values) {
   if (!values.length) return { records: [], summary: emptySummary(), unmatchedRecords: [] };
-  const headers = values[0].map(normalizeHeader);
+  const headerRowIndex = findHeaderRow(values);
+  if (headerRowIndex < 0) {
+    const error = new Error('Dispatch sheet header row not found');
+    error.statusCode = 422;
+    error.publicMessage = '시트에서 요양기관명·항목·발주수량·출고 상황 헤더를 찾지 못했습니다.';
+    throw error;
+  }
+  const headers = values[headerRowIndex].map(normalizeHeader);
   const indexes = Object.fromEntries(Object.entries(REQUIRED_HEADERS).map(([key, aliases]) => [
     key,
     headers.findIndex(header => aliases.includes(header)),
   ]));
-  const missing = Object.entries(indexes).filter(([, index]) => index < 0).map(([key]) => key);
+  Object.entries(OPTIONAL_HEADERS).forEach(([key, aliases]) => {
+    indexes[key] = headers.findIndex(header => aliases.includes(header));
+  });
+  const missing = Object.keys(REQUIRED_HEADERS).filter(key => indexes[key] < 0);
   if (missing.length) {
     const error = new Error(`Missing headers: ${missing.join(', ')}`);
     error.statusCode = 422;
@@ -105,20 +118,22 @@ function normalizeSheetRows(values) {
 
   const records = [];
   const unmatchedRecords = [];
-  values.slice(1).forEach((row, rowIndex) => {
-    const value = key => String(row[indexes[key]] || '').trim();
+  values.slice(headerRowIndex + 1).forEach((row, rowIndex) => {
+    const value = key => indexes[key] >= 0 ? String(row[indexes[key]] || '').trim() : '';
+    const dispatch = parseDispatchStatus(value('status'));
     const record = {
-      row: rowIndex + 2,
+      row: headerRowIndex + rowIndex + 2,
       clinicName: value('clinic'),
       item: value('item'),
       quantity: parseQuantity(value('quantity')),
       rawStatus: value('status'),
-      sentDate: normalizeDate(value('sentDate')),
+      sentDate: normalizeDate(value('sentDate')) || dispatch.date,
     };
-    record.status = normalizeStatus(record.rawStatus);
+    record.status = dispatch.status;
     record.isPaperCup = normalizeHeader(record.item).includes('종이컵');
     if (!record.clinicName && !record.item && !record.rawStatus && !record.sentDate) return;
-    if (!record.clinicName || !record.item || !record.rawStatus || !record.sentDate || record.status === 'review') {
+    const completedWithoutDate = record.status === 'completed' && !record.sentDate;
+    if (!record.clinicName || !record.item || !record.rawStatus || completedWithoutDate || record.status === 'review') {
       record.status = 'review';
       record.reviewReason = getReviewReason(record);
       unmatchedRecords.push(record);
@@ -139,15 +154,26 @@ function normalizeSheetRows(values) {
   };
 }
 
+function findHeaderRow(values) {
+  return values.findIndex(row => {
+    const headers = row.map(normalizeHeader);
+    return Object.values(REQUIRED_HEADERS).filter(aliases => headers.some(header => aliases.includes(header))).length >= 3;
+  });
+}
+
 function normalizeHeader(value) {
   return String(value || '').toLowerCase().replace(/[\s_\-()]/g, '');
 }
 
 function normalizeStatus(value) {
   const status = normalizeHeader(value);
-  if (['완료', '발송완료', '발송'].includes(status)) return 'completed';
-  if (['대기', '신청', '미발송'].includes(status)) return 'pending';
+  if (['대기', '신청', '미발송'].includes(status) || status.includes('미출고') || status.includes('출고예정')) return 'pending';
+  if (['완료', '발송완료', '발송'].includes(status) || status.includes('출고')) return 'completed';
   return 'review';
+}
+
+function parseDispatchStatus(value) {
+  return { status: normalizeStatus(value), date: normalizeDate(value) };
 }
 
 function normalizeDate(value) {
@@ -167,17 +193,17 @@ function parseQuantity(value) {
 function getReviewReason(record) {
   if (!record.clinicName) return '거래처명이 비어 있습니다.';
   if (!record.item) return '품목이 비어 있습니다.';
-  if (!record.rawStatus) return '발송상태가 비어 있습니다.';
-  if (!record.sentDate) return '발송일 형식을 확인하세요.';
+  if (!record.rawStatus) return '출고 상황이 비어 있습니다.';
+  if (record.status === 'completed' && !record.sentDate) return '출고일 형식을 확인하세요.';
   return `발송상태 '${record.rawStatus}'을(를) 해석할 수 없습니다.`;
 }
 
 function displayHeader(key) {
-  return { clinic: '거래처', item: '품목', quantity: '수량', status: '발송상태', sentDate: '발송일' }[key];
+  return { clinic: '요양기관명', item: '항목', quantity: '발주수량', status: '출고 상황' }[key];
 }
 
 function emptySummary() {
   return { total: 0, paperCupPending: 0, paperCupCompleted: 0, review: 0 };
 }
 
-module.exports._test = { normalizeSheetRows, normalizeStatus, normalizeDate };
+module.exports._test = { normalizeSheetRows, normalizeStatus, normalizeDate, findHeaderRow };

@@ -1562,7 +1562,7 @@ function renderWorklistCard({ icon, title, tone, count, subtitle, rows, empty, r
 function dispatchRow(record, actionLabel) {
   return {
     title: escapeHtml(record.clinic.name),
-    detail: `${record.sentDate} · ${escapeHtml(record.item)} ${record.quantity > 1 ? `×${record.quantity}` : ''}`,
+    detail: `${record.sentDate || '출고일 미정'} · ${escapeHtml(record.item)} ${record.quantity > 1 ? `×${record.quantity}` : ''}`,
     action: "navigate('promo-track')", actionLabel
   };
 }

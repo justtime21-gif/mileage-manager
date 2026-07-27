@@ -122,6 +122,6 @@ CSS 변수는 `:root`에 정의됨:
 
 - 데이터는 **브라우저 localStorage에만 저장**됨. 다른 기기/브라우저에서 보려면 내보내기/가져오기 필수.
 - OCR은 **네이버 클로바 OCR**을 사용 (`api/ocr.js` 서버리스 함수 경유). Vercel 환경변수 `CLOVA_OCR_SECRET`, `CLOVA_OCR_URL` 필요. **GitHub Pages는 서버리스 함수가 없어 OCR이 동작하지 않음** — Vercel 배포(`mileage-manager.vercel.app`)에서만 사용 가능.
-- 종이컵 업무 목록은 `api/dispatch-status.js`가 구글시트를 읽기 전용으로 조회한다. `.env.example`의 `GOOGLE_SHEETS_*`, `GOOGLE_SERVICE_ACCOUNT_*` 값을 Vercel 환경변수로 설정하고, 시트를 서비스 계정 이메일에 **뷰어**로 공유해야 한다. 시트 첫 행에는 `거래처`, `품목`, `수량`, `발송상태`, `발송일` 열이 필요하다.
+- 종이컵 업무 목록은 `api/dispatch-status.js`가 구글시트를 읽기 전용으로 조회한다. `.env.example`의 `GOOGLE_SHEETS_*`, `GOOGLE_SERVICE_ACCOUNT_*` 값을 Vercel 환경변수로 설정하고, 시트를 서비스 계정 이메일에 **뷰어 또는 편집자**로 공유해야 한다. `26y 판촉물 신청` 탭은 상단 안내 행을 건너뛰고 `요양기관명`, `항목`, `발주수량`, `출고 상황` 헤더를 자동 탐지한다. `출고 상황`의 `4/2 출고`는 완료와 출고일로 해석한다.
 - `uid()` 함수로 ID 생성. 기존 데이터의 id를 임의 변경하면 연결이 끊어짐.
 - 코드 수정 후 반드시 `save()` 호출해야 localStorage에 반영됨.
