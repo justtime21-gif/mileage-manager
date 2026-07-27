@@ -10,6 +10,7 @@ const REQUIRED_HEADERS = {
 
 const OPTIONAL_HEADERS = {
   sentDate: ['발송일', '출고일', '배송일', 'date', 'sentdate'],
+  requestMonth: ['월', '신청월', '발송월', 'month'],
 };
 
 module.exports = async (req, res) => {
@@ -131,6 +132,7 @@ function normalizeSheetRows(values) {
       applicant: value('applicant'),
       rawStatus: value('status'),
       sentDate: normalizeDate(value('sentDate')) || dispatch.date,
+      requestMonth: normalizeMonth(value('requestMonth')),
     };
     record.status = dispatch.status;
     record.isPaperCup = normalizeHeader(record.item).includes('종이컵');
@@ -203,6 +205,11 @@ function normalizeDate(value) {
   return `${year}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
 }
 
+function normalizeMonth(value) {
+  const match = String(value || '').match(/(?:^|\s)(1[0-2]|[1-9])\s*월?/);
+  return match ? Number(match[1]) : 0;
+}
+
 function parseQuantity(value) {
   const match = String(value || '').match(/\d+/);
   return match ? Number(match[0]) : 1;
@@ -224,4 +231,4 @@ function emptySummary() {
   return { total: 0, paperCupPending: 0, paperCupCompleted: 0, review: 0 };
 }
 
-module.exports._test = { normalizeSheetRows, normalizeStatus, normalizeDate, findHeaderRow, filterByApplicant };
+module.exports._test = { normalizeSheetRows, normalizeStatus, normalizeDate, normalizeMonth, findHeaderRow, filterByApplicant };

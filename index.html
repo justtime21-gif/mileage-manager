@@ -609,7 +609,10 @@
     <div id="page-promo-track" class="page">
       <div class="page-header flex justify-between items-center">
         <div><h2>🚚 판촉물 발송 현황</h2><p>월별 발송 체크리스트 및 거래선별 이력</p></div>
-        <button class="btn btn-outline" onclick="navigate('redeem')">판촉물 차감</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-outline" onclick="loadDispatchStatus(true)" title="구글시트 새로고침">↻ 시트 새로고침</button>
+          <button class="btn btn-outline" onclick="navigate('redeem')">판촉물 차감</button>
+        </div>
       </div>
 
       <!-- 연간 체크리스트 -->
@@ -617,8 +620,9 @@
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
           <h3 style="margin:0">발송 체크리스트</h3>
           <input type="number" id="pt-year" min="2020" max="2099" onchange="renderPromoTrack()" style="width:90px;border:1px solid var(--gray-300);border-radius:6px;padding:6px 10px">
-          <span style="font-size:13px;color:var(--gray-400)">✅ 발송완료 &nbsp; ⬜ 미발송 (클릭 → 입력)</span>
+          <span style="font-size:13px;color:var(--gray-400)">✅ 완료 &nbsp; 🟧 시트 발송대기 &nbsp; ⬜ 미발송 (클릭 → 입력)</span>
         </div>
+        <div id="pt-sheet-status" style="margin-bottom:12px"></div>
         <div style="overflow-x:auto">
           <div id="pt-checklist"></div>
         </div>
@@ -1312,7 +1316,7 @@ function navigate(page) {
   if (page === 'rx-drugs') renderRxDrugs();
   if (page === 'promo-items') renderPromoItems();
   if (page === 'history') { renderHistoryFilters(); renderHistory(); }
-  if (page === 'promo-track') renderPromoTrack();
+  if (page === 'promo-track') { renderPromoTrack(); loadDispatchStatus(); }
   if (page === 'settings') { renderRxDrugs(); renderPromoItems(); renderOrderDateList(); }
 }
 
@@ -1599,6 +1603,7 @@ async function loadDispatchStatus(force = false) {
     dispatchSyncState = { ...dispatchSyncState, loading: false, error: error.message || '구글시트 연동에 실패했습니다.' };
   }
   renderDashboardWorklists();
+  if (document.getElementById('page-promo-track')?.classList.contains('active')) renderPromoTrack();
 }
 
 // ===== CLINICS =====
@@ -3202,6 +3207,47 @@ function renderPromoTrack() {
 
   renderPromoChecklist(year);
   renderPromoHistory();
+  renderPromoSheetStatus(year);
+}
+
+function getPromoSheetRows(year) {
+  const valid = [];
+  const review = [...(dispatchSyncState.unmatchedRecords || [])];
+  (dispatchSyncState.records || []).forEach(record => {
+    if (record.status === 'review') return;
+    const clinic = findClinicExactByName(record.clinicName);
+    if (!clinic) {
+      review.push({ ...record, reviewReason: '앱 거래처와 정확히 일치하지 않습니다.' });
+      return;
+    }
+    const sentYear = record.sentDate ? Number(record.sentDate.slice(0, 4)) : year;
+    const month = record.sentDate ? Number(record.sentDate.slice(5, 7)) : Number(record.requestMonth || 0);
+    if (sentYear === year && month >= 1 && month <= 12) valid.push({ ...record, clinic, month });
+  });
+  const uniqueReview = [...new Map(review.map(record => [`${record.row || ''}:${record.clinicName}:${record.item}`, record])).values()];
+  return { valid, review: uniqueReview };
+}
+
+function renderPromoSheetStatus(year) {
+  const root = document.getElementById('pt-sheet-status');
+  if (!root) return;
+  if (dispatchSyncState.loading) {
+    root.innerHTML = '<div class="alert alert-info" style="margin:0">구글시트 발송 현황을 불러오는 중입니다.</div>';
+    return;
+  }
+  if (dispatchSyncState.error) {
+    root.innerHTML = `<div class="alert" style="margin:0;background:#fef2f2;color:#b91c1c;border:1px solid #fecaca">시트 연동 오류: ${escapeHtml(dispatchSyncState.error)} <button class="btn btn-outline btn-sm" onclick="loadDispatchStatus(true)">재시도</button></div>`;
+    return;
+  }
+  if (!dispatchSyncState.syncedAt) {
+    root.innerHTML = '<div class="alert alert-info" style="margin:0">구글시트 연결 후 담당자 본인 신청 건을 발송표에 표시합니다.</div>';
+    return;
+  }
+  const rows = getPromoSheetRows(year);
+  const completed = rows.valid.filter(row => row.status === 'completed').length;
+  const pending = rows.valid.filter(row => row.status === 'pending').length;
+  const review = rows.review.length;
+  root.innerHTML = `<div class="alert alert-info" style="margin:0;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><strong>구글시트 연동</strong><span>${year}년 완료 ${completed}건 · 대기 ${pending}건</span>${review ? `<span style="color:var(--danger)">확인 필요 ${review}건</span>` : ''}<span style="margin-left:auto;font-size:12px">${formatSyncTime(dispatchSyncState.syncedAt)} 동기화</span></div>`;
 }
 
 function renderPromoChecklist(year) {
@@ -3212,8 +3258,10 @@ function renderPromoChecklist(year) {
       .map(t => t.clinicId)
   );
 
+  const sheetRows = getPromoSheetRows(year);
+  const sheetClinicIds = new Set(sheetRows.valid.map(row => row.clinic.id));
   const targets = [...clinics]
-    .filter(c => c.regularPromos?.length || c.dualTrack || clinicsWithSpends.has(c.id))
+    .filter(c => c.regularPromos?.length || c.dualTrack || clinicsWithSpends.has(c.id) || sheetClinicIds.has(c.id))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   if (!targets.length) {
@@ -3257,6 +3305,7 @@ function renderPromoChecklist(year) {
       const monthSpends = transactions.filter(t =>
         t.clinicId === c.id && t.type === 'spend' && t.date?.startsWith(ym)
       );
+      const monthSheetRows = sheetRows.valid.filter(row => row.clinic.id === c.id && row.month === m);
       // 품목별 수량 합산
       const itemQtyMap = {};
       monthSpends.flatMap(t => t.items || []).forEach(it => {
@@ -3266,12 +3315,23 @@ function renderPromoChecklist(year) {
       const sentItems = Object.entries(itemQtyMap).map(([n, qty]) =>
         qty > 1 ? `${n} ×${qty}` : n
       );
+      const completedSheetRows = monthSheetRows.filter(row => row.status === 'completed');
+      const pendingSheetRows = monthSheetRows.filter(row => row.status === 'pending');
+      completedSheetRows.forEach(row => sentItems.push(`${escapeHtml(shortName(row.item))}${row.quantity > 1 ? ` ×${row.quantity}` : ''}`));
 
       if (sentItems.length) {
-        const day = monthSpends[0]?.date?.slice(8) || '';
+        const day = completedSheetRows[0]?.sentDate?.slice(8) || monthSpends[0]?.date?.slice(8) || '';
+        const pendingNote = pendingSheetRows.length ? `<div style="color:#dbeafe;font-size:10px;font-weight:600">대기 ${pendingSheetRows.length}건</div>` : '';
         return `<td style="padding:4px;text-align:center;background:#059669;font-size:12px;line-height:1.5;border-radius:4px;${sep}">
           <div style="color:#fff;font-weight:700">${sentItems.join('/')}</div>
           ${day ? `<div style="color:#a7f3d0;font-size:11px;font-weight:600">${Number(day)}일</div>` : ''}
+          ${pendingNote}
+        </td>`;
+      } else if (pendingSheetRows.length) {
+        const pendingItems = pendingSheetRows.map(row => `${escapeHtml(shortName(row.item))}${row.quantity > 1 ? ` ×${row.quantity}` : ''}`).join('/');
+        return `<td style="padding:4px;text-align:center;background:#f59e0b;font-size:12px;line-height:1.5;border-radius:4px;${sep}" title="구글시트 발송 대기">
+          <div style="color:#fff;font-weight:700">${pendingItems}</div>
+          <div style="color:#fffbeb;font-size:11px;font-weight:600">발송 대기</div>
         </td>`;
       } else if (isPast) {
         return `<td style="padding:4px;text-align:center;background:#f1f5f9;cursor:pointer;border-radius:4px;${sep}" title="${m}월 차감 입력"
@@ -3303,6 +3363,8 @@ function renderPromoChecklist(year) {
 
 function renderPromoHistory() {
   const clinicId = document.getElementById('pt-clinic-filter').value;
+  const year = parseInt(document.getElementById('pt-year').value) || new Date().getFullYear();
+  const sheetRows = getPromoSheetRows(year).valid;
   const targets = clinicId
     ? clinics.filter(c => c.id === clinicId)
     : [...clinics].sort((a, b) => a.name.localeCompare(b.name));
@@ -3311,14 +3373,23 @@ function renderPromoHistory() {
     const spends = transactions
       .filter(t => t.clinicId === c.id && t.type === 'spend')
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-    if (!spends.length) return '';
-    const timeline = spends.flatMap(t =>
+    const localTimeline = spends.flatMap(t =>
       (t.items || []).map(it => {
         const d = t.date || '';
         const qty = (it.qty || 1) > 1 ? `×${it.qty}` : '';
         return `${Number(d.slice(5, 7))}월${Number(d.slice(8, 10))}일 ${it.name}${qty}`;
       })
-    ).join('  ');
+    );
+    const sheetTimeline = sheetRows
+      .filter(row => row.clinic.id === c.id)
+      .sort((a, b) => (a.sentDate || '').localeCompare(b.sentDate || ''))
+      .map(row => {
+        const qty = row.quantity > 1 ? `×${row.quantity}` : '';
+        const date = row.sentDate ? `${Number(row.sentDate.slice(5, 7))}월${Number(row.sentDate.slice(8, 10))}일` : `${row.month}월`;
+        return `<span style="color:${row.status === 'pending' ? '#b45309' : '#047857'}">[시트] ${date} ${escapeHtml(row.item)}${qty}${row.status === 'pending' ? ' · 발송 대기' : ''}</span>`;
+      });
+    if (!localTimeline.length && !sheetTimeline.length) return '';
+    const timeline = [...localTimeline, ...sheetTimeline].join(' &nbsp; ');
     const badge = c.noMileage
       ? '<span style="font-size:11px;color:var(--gray-400);margin-left:4px">(기록만)</span>' : '';
     return `<div style="display:flex;align-items:baseline;gap:12px;padding:10px 0;border-bottom:1px solid var(--gray-100)">
