@@ -3,9 +3,18 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   // CRM 환경변수 이름 우선, 마일리지 앱 이름 fallback
-  const secret = process.env.CLOVA_OCR_SECRET_KEY || process.env.CLOVA_OCR_SECRET;
+  const rawSecret = process.env.CLOVA_OCR_SECRET_KEY || process.env.CLOVA_OCR_SECRET;
   const rawUrl = process.env.CLOVA_OCR_INVOKE_URL || process.env.CLOVA_OCR_URL;
-  if (!secret || !rawUrl) return res.status(500).json({ error: 'OCR 서버 환경변수(CLOVA_OCR_SECRET_KEY, CLOVA_OCR_INVOKE_URL)가 설정되지 않았습니다.' });
+  if (!rawSecret || !rawUrl) return res.status(500).json({ error: 'OCR 서버 환경변수(CLOVA_OCR_SECRET_KEY, CLOVA_OCR_INVOKE_URL)가 설정되지 않았습니다.' });
+
+  // 시크릿에 따옴표·줄바꿈·공백이 섞이면 fetch 헤더 검증이 실패하며
+  // "The string did not match the expected pattern"만 던진다. URL과 동일하게 정리·검증한다.
+  const secret = String(rawSecret).trim().replace(/^['"]|['"]$/g, '');
+  if (!/^[\x21-\x7e]+$/.test(secret)) {
+    return res.status(500).json({
+      error: 'OCR 시크릿 설정이 올바르지 않습니다. Vercel의 CLOVA_OCR_SECRET_KEY에 Secret Key만 따옴표·줄바꿈 없이 다시 저장해 주세요.',
+    });
+  }
 
   // Vercel 환경변수에 따옴표, 공백 또는 안내 문구가 함께 저장되면 fetch가
   // "The string did not match the expected pattern"만 반환한다. 실제 주소는
@@ -43,7 +52,15 @@ module.exports = async (req, res) => {
     const text = (json.images || []).map(im => fieldsToText(im.fields || [])).join('\n\n');
     res.status(200).json({ text });
   } catch (e) {
-    res.status(500).json({ error: e.message || 'OCR 처리 중 오류' });
+    // fetch가 헤더/URL 형식으로 실패하면 원인 없는 짧은 메시지만 남는다.
+    // 실제 값은 노출하지 않고 어느 환경변수를 고쳐야 하는지만 안내한다.
+    const msg = e.message || 'OCR 처리 중 오류';
+    if (/did not match|Invalid|Failed to parse/i.test(msg)) {
+      return res.status(500).json({
+        error: `OCR 호출 설정이 올바르지 않습니다 (${msg}). Vercel의 CLOVA_OCR_INVOKE_URL과 CLOVA_OCR_SECRET_KEY를 따옴표·줄바꿈·앞뒤 공백 없이 다시 저장한 뒤 Redeploy 해주세요.`,
+      });
+    }
+    res.status(500).json({ error: msg });
   }
 };
 
