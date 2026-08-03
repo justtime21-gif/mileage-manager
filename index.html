@@ -1128,6 +1128,9 @@ let promoItems = DB.get('promoItems', getDefaultPromoItems());
 migrateCombinedPromoItems();
 let transactions = DB.get('transactions', []);
 let appSettings = DB.get('appSettings', { orderDates: [], promoSheetUrl: '' });
+// 거래선별 마지막 보고서 전송 시점 { [clinicId]: { balance, at, date } }
+// 다음 보고서는 이 잔액에서 이어지고, 그 이후 입력분만 표에 보여준다.
+let reportSnapshots = DB.get('reportSnapshots', {});
 
 function save() {
   DB.set('clinics', clinics);
@@ -1135,6 +1138,7 @@ function save() {
   DB.set('promoItems', promoItems);
   DB.set('transactions', transactions);
   DB.set('appSettings', appSettings);
+  DB.set('reportSnapshots', reportSnapshots);
 }
 
 function migrateClinicNames() {
@@ -3094,12 +3098,15 @@ function getReportData() {
   const c = clinics.find(x => x.id === clinicId);
   if (!c) return null;
 
-  // 가장 최근 처방 earnTx 1건
+  // 지난 보고서 이후 새로 입력된 처방을 담는다. 스냅샷이 없거나 새 처방이 없으면
+  // 종전대로 가장 최근 1건만 쓴다. (여러 건이면 잔액 계산이 어긋나지 않도록 모두 합산)
+  const snapshot = reportSnapshots[clinicId];
   const allEarnTxs = transactions
     .filter(t => t.clinicId === clinicId && t.type === 'earn')
     .sort((a, b) => b.createdAt - a.createdAt);
   const latestEarnTx = allEarnTxs[0];
-  const earnTxs = latestEarnTx ? [latestEarnTx] : [];
+  const newEarnTxs = snapshot ? allEarnTxs.filter(t => t.createdAt > snapshot.at) : [];
+  const earnTxs = newEarnTxs.length ? newEarnTxs : (latestEarnTx ? [latestEarnTx] : []);
 
   const rate = latestEarnTx ? latestEarnTx.rate : c.rate;
   const items = [];
@@ -3110,13 +3117,14 @@ function getReportData() {
   const monthTotal = items.reduce((s, i) => s + i.amount, 0);
   const monthMileage = earnTxs.reduce((s, t) => s + t.amount, 0);
 
-  // 처방 시작일 이후의 판촉물 차감을 모두 표시한다. 기준을 종료일로 두면 처방 기간
-  // 안에서 발송한 건(예: 6/1~6/30 처방에 6/23 종이컵)이 표에서 빠지고 이전 잔액에서만
-  // 조용히 차감돼 보고서 흐름이 맞지 않는다.
-  const refDate = latestEarnTx?.rxStart || latestEarnTx?.date || '';
-  const spends = transactions.filter(t =>
-    t.clinicId === clinicId && t.type === 'spend' && (!refDate || t.date >= refDate)
-  );
+  // 지난번 보고서를 보낸 시점이 있으면 그 이후 입력된 차감만 새로 보여준다.
+  // 이미 보낸 보고서에 실린 차감이 다시 나오면 거래선 입장에서 두 번 빠진 것처럼 보인다.
+  // 스냅샷이 없는 거래선은 종전대로 처방 시작일을 기준으로 삼는다.
+  const refDate = earnTxs[earnTxs.length - 1]?.rxStart || latestEarnTx?.date || '';
+  const spends = transactions.filter(t => {
+    if (t.clinicId !== clinicId || t.type !== 'spend') return false;
+    return snapshot ? t.createdAt > snapshot.at : (!refDate || t.date >= refDate);
+  });
   const spendRows = [];
   spends.forEach(t => (t.items || []).forEach(it => {
     spendRows.push({ date: t.date, name: it.name, qty: it.qty || 1, price: it.price || it.amount, amount: it.amount });
@@ -3125,26 +3133,34 @@ function getReportData() {
 
   const { earned, spent, balance, initial } = getClinicBalance(clinicId);
 
-  // 이번 처방 기간이 시작되기 전까지의 잔액. 기간 안팎의 차감은 아래 차감 표에서 빼므로
-  // "이전 잔액 + 이번 적립 - 차감 합계 = 최종 잔액" 흐름이 그대로 맞아떨어진다.
-  const balanceReferenceDate = refDate;
-  const previousEarned = allEarnTxs
-    .filter(t => t.id !== latestEarnTx?.id)
-    .reduce((sum, t) => sum + (t.amount || 0), 0);
-  const previousSpent = transactions
-    .filter(t => t.clinicId === clinicId && t.type === 'spend' && (!balanceReferenceDate || t.date < balanceReferenceDate))
-    .reduce((sum, t) => sum + (t.amount || 0), 0);
-  const previousBalance = initial + previousEarned - previousSpent;
+  // 지난 보고서를 보낸 시점의 잔액에서 이어간다. 그래야 거래선이 받은 직전 보고서의
+  // 최종 잔액과 이번 보고서의 시작 잔액이 정확히 맞물린다.
+  // "이전 잔액 + 이번 적립 - 차감 합계 = 최종 잔액"은 어느 경우에도 성립한다.
+  let previousBalance;
+  if (snapshot) {
+    previousBalance = snapshot.balance;
+  } else {
+    const previousEarned = allEarnTxs
+      .filter(t => !earnTxs.some(e => e.id === t.id))
+      .reduce((sum, t) => sum + (t.amount || 0), 0);
+    const previousSpent = transactions
+      .filter(t => t.clinicId === clinicId && t.type === 'spend' && (!refDate || t.date < refDate))
+      .reduce((sum, t) => sum + (t.amount || 0), 0);
+    previousBalance = initial + previousEarned - previousSpent;
+  }
 
-  // 처방 기간 문자열 (rxStart~rxEnd 직접 사용)
+  // 처방 기간 문자열 — 새 처방이 여러 건이면 전체 범위를 표시
   let periodStr = '';
-  if (latestEarnTx?.rxStart && latestEarnTx?.rxEnd) {
+  const starts = earnTxs.map(t => t.rxStart).filter(Boolean).sort();
+  const ends = earnTxs.map(t => t.rxEnd).filter(Boolean).sort();
+  if (starts.length && ends.length) {
     const f = s => `${s.slice(2, 4)}년 ${Number(s.slice(5, 7))}월 ${Number(s.slice(8, 10))}일`;
-    periodStr = `${f(latestEarnTx.rxStart)} ~ ${f(latestEarnTx.rxEnd)}`;
+    periodStr = `${f(starts[0])} ~ ${f(ends[ends.length - 1])}`;
   }
 
   return { c, rate, items, monthTotal, monthMileage, spendRows, monthSpend, earned, spent, balance, initial, previousBalance, periodStr,
-    latestEarnTxId: latestEarnTx?.id || null, rxStart: latestEarnTx?.rxStart || '', rxEnd: latestEarnTx?.rxEnd || '' };
+    snapshot: snapshot || null,
+    latestEarnTxId: latestEarnTx?.id || null, rxStart: starts[0] || '', rxEnd: ends[ends.length - 1] || '' };
 }
 
 function saveReportPeriod() {
@@ -3244,7 +3260,10 @@ function renderReport() {
     drawRow(['처방 내역 없음', '', '', '', ''], '#ffffff', '#9ca3af', false);
   }
   drawRow(['처방액 합계', '', '', fmtNum(d.monthTotal), fmtNum(d.monthMileage)], '#ddebf7', '#1f4e79', true);
-  drawRow(['이전 마일리지 잔액', '', '', '', fmtNum(d.previousBalance)], '#f5f3ff', '#6d28d9', true);
+  const prevLabel = d.snapshot?.date
+    ? `이전 마일리지 잔액 (${d.snapshot.date.slice(2).replace(/-/g, '.')} 보고 기준)`
+    : '이전 마일리지 잔액';
+  drawRow([prevLabel, '', '', '', fmtNum(d.previousBalance)], '#f5f3ff', '#6d28d9', true);
   drawRow(['누적 마일리지 (차감 반영)', '', '', '', fmtNum(d.balance)], '#fce4d6', '#c55a11', true);
 
   // 판촉물 차감
@@ -3329,6 +3348,16 @@ function downloadReportImage() {
   }, 'image/png');
 }
 
+// 보고서를 보낸 시점의 최종 잔액을 기억해 둔다. 다음 보고서는 이 잔액에서 이어지고,
+// 이 시점 이후 입력된 적립·차감만 새로 표시된다.
+function saveReportSnapshot() {
+  const d = getReportData();
+  if (!d) return;
+  reportSnapshots[d.c.id] = { balance: d.balance, at: Date.now(), date: today() };
+  save();
+  renderReport();
+}
+
 async function copyReportImage() {
   const canvas = document.getElementById('report-canvas');
   try {
@@ -3338,7 +3367,8 @@ async function copyReportImage() {
         'image/png': new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
       })
     ]);
-    alert('✅ 이미지가 복사되었습니다.\n카톡 채팅창에 붙여넣기(Cmd+V) 하세요.');
+    saveReportSnapshot();
+    alert('✅ 이미지가 복사되었습니다.\n카톡 채팅창에 붙여넣기(Cmd+V) 하세요.\n\n이번 최종 잔액을 기억해 다음 보고서가 이어서 계산됩니다.');
   } catch (e) {
     // 폴백: 이미지를 새 탭으로 열어 수동 복사 안내
     const url = canvas.toDataURL('image/png');
