@@ -1738,6 +1738,7 @@ async function loadDispatchStatus(force = false) {
     if (!response.ok) throw new Error(data.error || '발송 시트 데이터를 불러오지 못했습니다.');
     dispatchSyncState = { ...data, loading: false, error: '' };
     sessionStorage.setItem(DISPATCH_CACHE_KEY, JSON.stringify(dispatchSyncState));
+    dispatchSyncState.autoSpends = syncSheetSpends();
   } catch (error) {
     dispatchSyncState = { ...dispatchSyncState, loading: false, error: error.message || '구글시트 연동에 실패했습니다.' };
   }
@@ -3368,12 +3369,59 @@ function renderPromoTrack() {
   renderPromoSheetReview(year);
 }
 
+// 시트 행 → 차감 기록 자동 반영. sheetRow(시트 행 번호)를 기록해 재동기화 시 중복 생성을 막는다.
+function getLinkedSheetRows() {
+  return new Set(transactions.filter(t => t.sheetRow).map(t => t.sheetRow));
+}
+
+function findPromoItemByName(name) {
+  const target = normalizeText(name || '');
+  if (!target) return null;
+  return promoItems.find(p => {
+    const pn = normalizeText(p.name);
+    return pn === target || pn.includes(target) || target.includes(pn);
+  }) || null;
+}
+
+// 구글시트에서 출고 완료된 건을 마일리지 차감 기록으로 옮긴다.
+// 정기배송 품목(차감 없음)은 시트 표시만으로 충분하므로 기록을 만들지 않는다.
+function syncSheetSpends() {
+  const linked = getLinkedSheetRows();
+  const created = [];
+  (dispatchSyncState.records || []).forEach(record => {
+    if (record.status !== 'completed' || !record.sentDate) return;
+    if (isHeadOfficeDispatchRecord(record)) return;
+    if (linked.has(record.row)) return;
+    const clinic = findClinicExactByName(record.clinicName);
+    if (!clinic || clinic.noMileage) return;
+    if (isRegularPromoForClinic(clinic, record.item)) return;
+    const item = findPromoItemByName(record.item);
+    if (!item) return;
+
+    const qty = record.quantity || 1;
+    const amount = item.price * qty;
+    transactions.push({
+      id: uid(), clinicId: clinic.id, type: 'spend', amount,
+      items: [{ name: item.name, qty, price: item.price, amount }],
+      date: record.sentDate, memo: '구글시트 출고 자동 반영',
+      createdAt: Date.now(), sheetRow: record.row,
+    });
+    linked.add(record.row);
+    created.push(`${clinic.name} ${item.name} ×${qty}`);
+  });
+  if (created.length) save();
+  return created;
+}
+
 function getPromoSheetRows(year) {
   const valid = [];
+  // 이미 차감 기록으로 옮긴 시트 행은 화면에서 중복 표시하지 않는다
+  const linked = getLinkedSheetRows();
   const review = [...(dispatchSyncState.unmatchedRecords || [])].filter(record => !isHeadOfficeDispatchRecord(record));
   (dispatchSyncState.records || []).forEach(record => {
     if (isHeadOfficeDispatchRecord(record)) return;
     if (record.status === 'review') return;
+    if (linked.has(record.row)) return;
     const clinic = findClinicExactByName(record.clinicName);
     if (!clinic) {
       review.push({ ...record, reviewReason: '앱 거래처와 정확히 일치하지 않습니다.' });
@@ -3406,7 +3454,11 @@ function renderPromoSheetStatus(year) {
   const completed = rows.valid.filter(row => row.status === 'completed').length;
   const pending = rows.valid.filter(row => row.status === 'pending').length;
   const review = rows.review.length;
-  root.innerHTML = `<div class="alert alert-info" style="margin:0;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><strong>구글시트 연동</strong><span>${year}년 완료 ${completed}건 · 대기 ${pending}건</span>${review ? `<span style="color:var(--danger)">확인 필요 ${review}건</span>` : ''}<span style="margin-left:auto;font-size:12px">${formatSyncTime(dispatchSyncState.syncedAt)} 동기화</span></div>`;
+  const auto = dispatchSyncState.autoSpends || [];
+  const autoNote = auto.length
+    ? `<div class="alert" style="margin:8px 0 0;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-size:13px">💳 시트 출고분 ${auto.length}건을 마일리지 차감에 반영했습니다 · ${auto.map(escapeHtml).join(', ')}</div>`
+    : '';
+  root.innerHTML = `<div class="alert alert-info" style="margin:0;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><strong>구글시트 연동</strong><span>${year}년 완료 ${completed}건 · 대기 ${pending}건</span>${review ? `<span style="color:var(--danger)">확인 필요 ${review}건</span>` : ''}<span style="margin-left:auto;font-size:12px">${formatSyncTime(dispatchSyncState.syncedAt)} 동기화</span></div>${autoNote}`;
 }
 
 function renderPromoSheetReview(year) {
