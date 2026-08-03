@@ -3110,10 +3110,12 @@ function getReportData() {
   const monthTotal = items.reduce((s, i) => s + i.amount, 0);
   const monthMileage = earnTxs.reduce((s, t) => s + t.amount, 0);
 
-  // 최신 처방 종료 이후 새로 입력된 판촉물 차감만 보고서에 표시
-  const refDate = latestEarnTx?.rxEnd || latestEarnTx?.date || '';
+  // 처방 시작일 이후의 판촉물 차감을 모두 표시한다. 기준을 종료일로 두면 처방 기간
+  // 안에서 발송한 건(예: 6/1~6/30 처방에 6/23 종이컵)이 표에서 빠지고 이전 잔액에서만
+  // 조용히 차감돼 보고서 흐름이 맞지 않는다.
+  const refDate = latestEarnTx?.rxStart || latestEarnTx?.date || '';
   const spends = transactions.filter(t =>
-    t.clinicId === clinicId && t.type === 'spend' && (!refDate || t.date > refDate)
+    t.clinicId === clinicId && t.type === 'spend' && (!refDate || t.date >= refDate)
   );
   const spendRows = [];
   spends.forEach(t => (t.items || []).forEach(it => {
@@ -3123,14 +3125,14 @@ function getReportData() {
 
   const { earned, spent, balance, initial } = getClinicBalance(clinicId);
 
-  // 이번 처방을 입력하기 직전의 잔액. 이후 입력된 판촉물 차감은 포함하지 않아
-  // "이전 잔액 + 이번 적립 - 새 차감 = 최종 잔액" 흐름을 보고서에서 확인할 수 있다.
-  const balanceReferenceDate = latestEarnTx?.rxEnd || latestEarnTx?.date || '';
+  // 이번 처방 기간이 시작되기 전까지의 잔액. 기간 안팎의 차감은 아래 차감 표에서 빼므로
+  // "이전 잔액 + 이번 적립 - 차감 합계 = 최종 잔액" 흐름이 그대로 맞아떨어진다.
+  const balanceReferenceDate = refDate;
   const previousEarned = allEarnTxs
     .filter(t => t.id !== latestEarnTx?.id)
     .reduce((sum, t) => sum + (t.amount || 0), 0);
   const previousSpent = transactions
-    .filter(t => t.clinicId === clinicId && t.type === 'spend' && (!balanceReferenceDate || t.date <= balanceReferenceDate))
+    .filter(t => t.clinicId === clinicId && t.type === 'spend' && (!balanceReferenceDate || t.date < balanceReferenceDate))
     .reduce((sum, t) => sum + (t.amount || 0), 0);
   const previousBalance = initial + previousEarned - previousSpent;
 
@@ -3293,7 +3295,7 @@ function renderReport() {
   } else {
     drawSRow(['', '차감 내역 없음', '', '', ''], '#ffffff', '#9ca3af', false);
   }
-  drawSRow(['새 판촉물 차감 합계', '', '', '', fmtNum(d.monthSpend)], '#ddebf7', '#1f4e79', true);
+  drawSRow(['판촉물 차감 합계', '', '', '', fmtNum(d.monthSpend)], '#ddebf7', '#1f4e79', true);
 
   // 최종 잔액
   y += 16;
