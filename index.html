@@ -729,6 +729,40 @@
             <a id="promo-sheet-link" href="#" target="_blank" class="btn btn-outline" style="display:none">열기 →</a>
           </div>
         </div>
+
+        <!-- 담당자 본인 구글 계정으로 본인 발송시트 읽기 -->
+        <div class="card">
+          <h3 style="margin:0 0 4px">🔗 내 구글시트 연동</h3>
+          <div class="text-sm" style="color:var(--gray-500);margin-bottom:14px">
+            본인 구글 계정으로 연결하면 발송 현황을 본인 시트에서 읽어옵니다.
+            연결하지 않으면 종전대로 회사 공용 시트를 사용합니다.
+          </div>
+
+          <div id="gs-status" style="margin-bottom:14px"></div>
+
+          <div class="form-group">
+            <label>내 발송시트 주소</label>
+            <input type="url" id="gs-sheet-url" placeholder="https://docs.google.com/spreadsheets/d/..."
+              style="width:100%;border:1px solid var(--gray-300);border-radius:8px;padding:8px 12px;font-size:14px">
+          </div>
+          <div class="form-row" style="grid-template-columns:1fr 1fr">
+            <div class="form-group">
+              <label>탭 범위</label>
+              <input type="text" id="gs-sheet-range" placeholder="26y 판촉물 신청!A1:Z1000"
+                style="width:100%;border:1px solid var(--gray-300);border-radius:8px;padding:8px 12px;font-size:14px">
+            </div>
+            <div class="form-group">
+              <label>신청인 이름 (선택)</label>
+              <input type="text" id="gs-applicant" placeholder="비우면 시트 전체를 사용"
+                style="width:100%;border:1px solid var(--gray-300);border-radius:8px;padding:8px 12px;font-size:14px">
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-primary" onclick="connectGoogleSheet()">구글 계정으로 연결</button>
+            <button class="btn btn-outline" onclick="saveGoogleSheetSettings()">설정만 저장</button>
+            <button class="btn btn-outline" style="color:var(--danger)" onclick="disconnectGoogleSheet()">연결 해제</button>
+          </div>
+        </div>
       </div>
 
       <!-- 탭: 처방약품 관리 -->
@@ -1426,7 +1460,7 @@ function navigate(page) {
   if (page === 'promo-items') renderPromoItems();
   if (page === 'history') { renderHistoryFilters(); renderHistory(); }
   if (page === 'promo-track') { renderPromoTrack(); loadDispatchStatus(); }
-  if (page === 'settings') { renderRxDrugs(); renderPromoItems(); renderOrderDateList(); renderClinicAddresses(); }
+  if (page === 'settings') { renderRxDrugs(); renderPromoItems(); renderOrderDateList(); renderGoogleSheetStatus(); renderClinicAddresses(); }
 }
 
 function showSettingsTab(tab) {
@@ -1434,7 +1468,7 @@ function showSettingsTab(tab) {
     document.getElementById('stab-' + t).classList.toggle('active', t === tab);
     document.getElementById('stab-panel-' + t).style.display = t === tab ? '' : 'none';
   });
-  if (tab === 'schedule') renderOrderDateList();
+  if (tab === 'schedule') { renderOrderDateList(); renderGoogleSheetStatus(); }
   if (tab === 'addresses') renderClinicAddresses();
 }
 
@@ -1552,6 +1586,123 @@ function removeOrderDate(d) {
   DB.set('appSettings', appSettings);
   renderOrderDateList();
   renderOrderSchedule();
+}
+
+// ===== 담당자 개인 구글시트 연동 =====
+// 액세스 토큰은 저장하지 않고 메모리에만 둔다(약 1시간 유효). 탭을 새로 열면 다시 연결한다.
+// Client Secret이 필요 없는 브라우저 토큰 방식이라 서버에 담당자 자격증명이 남지 않는다.
+let googleToken = { value: '', expiresAt: 0 };
+let googleTokenClient = null;
+
+function sheetIdFromUrl(url) {
+  return (String(url || '').match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/) || [])[1] || '';
+}
+
+function isGoogleConnected() {
+  return Boolean(googleToken.value && Date.now() < googleToken.expiresAt);
+}
+
+function hasGoogleSheetSettings() {
+  return Boolean(sheetIdFromUrl(appSettings.gsSheetUrl) && (appSettings.gsRange || '').trim());
+}
+
+function loadScriptOnce(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) return resolve();
+    const s = document.createElement('script');
+    s.src = src; s.async = true;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('구글 로그인 스크립트를 불러오지 못했습니다.'));
+    document.head.appendChild(s);
+  });
+}
+
+// interactive=false면 이미 로그인된 계정으로 조용히 갱신만 시도한다(동기화 때 사용).
+async function ensureGoogleToken(interactive = true) {
+  if (isGoogleConnected()) return googleToken.value;
+
+  const res = await fetch('/api/google-config').catch(() => null);
+  const clientId = res && res.ok ? (await res.json()).clientId : '';
+  if (!clientId) throw new Error('구글 로그인 설정(GOOGLE_OAUTH_CLIENT_ID)이 서버에 없습니다.');
+
+  await loadScriptOnce('https://accounts.google.com/gsi/client');
+
+  return new Promise((resolve, reject) => {
+    googleTokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+      prompt: interactive ? '' : 'none',
+      callback: response => {
+        if (!response.access_token) return reject(new Error('구글 로그인이 취소되었습니다.'));
+        googleToken = {
+          value: response.access_token,
+          // 만료 직전 실패를 피하려고 60초 일찍 만료로 본다
+          expiresAt: Date.now() + (Number(response.expires_in || 3600) - 60) * 1000,
+        };
+        renderGoogleSheetStatus();
+        resolve(googleToken.value);
+      },
+      error_callback: err => reject(new Error(err?.message || '구글 로그인에 실패했습니다.')),
+    });
+    googleTokenClient.requestAccessToken();
+  });
+}
+
+function readGoogleSheetInputs() {
+  appSettings.gsSheetUrl = document.getElementById('gs-sheet-url').value.trim();
+  appSettings.gsRange = document.getElementById('gs-sheet-range').value.trim();
+  appSettings.gsApplicant = document.getElementById('gs-applicant').value.trim();
+  DB.set('appSettings', appSettings);
+}
+
+function saveGoogleSheetSettings() {
+  readGoogleSheetInputs();
+  if (!hasGoogleSheetSettings()) return alert('시트 주소와 탭 범위를 모두 입력하세요.');
+  renderGoogleSheetStatus();
+  alert('✅ 저장했습니다. "구글 계정으로 연결"을 눌러 로그인하세요.');
+}
+
+async function connectGoogleSheet() {
+  readGoogleSheetInputs();
+  if (!hasGoogleSheetSettings()) return alert('시트 주소와 탭 범위를 먼저 입력하세요.');
+  try {
+    await ensureGoogleToken(true);
+    renderGoogleSheetStatus();
+    await loadDispatchStatus(true);
+    alert('✅ 내 구글시트에 연결되었습니다.');
+  } catch (e) {
+    alert(`구글 연결 실패: ${e.message}`);
+  }
+}
+
+function disconnectGoogleSheet() {
+  if (googleToken.value && window.google?.accounts?.oauth2) {
+    google.accounts.oauth2.revoke(googleToken.value, () => {});
+  }
+  googleToken = { value: '', expiresAt: 0 };
+  renderGoogleSheetStatus();
+  loadDispatchStatus(true);
+}
+
+function renderGoogleSheetStatus() {
+  const el = document.getElementById('gs-status');
+  if (!el) return;
+  document.getElementById('gs-sheet-url').value = appSettings.gsSheetUrl || '';
+  document.getElementById('gs-sheet-range').value = appSettings.gsRange || '';
+  document.getElementById('gs-applicant').value = appSettings.gsApplicant || '';
+
+  let tone, text;
+  if (isGoogleConnected()) {
+    tone = 'background:#ecfdf5;color:#047857;border:1px solid #a7f3d0';
+    text = '✅ 내 구글 계정으로 연결됨 — 발송 현황을 내 시트에서 읽습니다.';
+  } else if (hasGoogleSheetSettings()) {
+    tone = 'background:#fff7ed;color:#b45309;border:1px solid #fed7aa';
+    text = '⚠️ 시트 설정은 저장됐지만 로그인이 필요합니다. "구글 계정으로 연결"을 누르세요.';
+  } else {
+    tone = 'background:#f1f5f9;color:#475569;border:1px solid var(--gray-200)';
+    text = '연결하지 않음 — 회사 공용 시트를 사용합니다.';
+  }
+  el.innerHTML = `<div class="alert" style="margin:0;${tone};font-size:13px">${text}</div>`;
 }
 
 function savePromoSheetUrl() {
@@ -1737,7 +1888,18 @@ async function loadDispatchStatus(force = false) {
   dispatchSyncState = { ...dispatchSyncState, loading: true, error: '' };
   renderDashboardWorklists();
   try {
-    const response = await fetch('/api/dispatch-status', { headers: { Accept: 'application/json' } });
+    // 본인 시트 설정이 있으면 개인 토큰으로 읽는다. 토큰이 만료됐으면 조용히 갱신을 시도하고,
+    // 갱신이 안 되면(로그인 필요) 공용 시트로 넘어가지 않고 안내한다 — 남의 시트를 보여주면 안 된다.
+    const headers = { Accept: 'application/json' };
+    if (hasGoogleSheetSettings()) {
+      const token = await ensureGoogleToken(false).catch(() => '');
+      if (!token) throw new Error('구글 로그인이 만료되었습니다. 설정에서 다시 연결하세요.');
+      headers['X-Sheet-Token'] = token;
+      headers['X-Sheet-Id'] = sheetIdFromUrl(appSettings.gsSheetUrl);
+      headers['X-Sheet-Range'] = encodeURIComponent(appSettings.gsRange || '');
+      headers['X-Sheet-Applicant'] = encodeURIComponent(appSettings.gsApplicant || '');
+    }
+    const response = await fetch('/api/dispatch-status', { headers });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || '발송 시트 데이터를 불러오지 못했습니다.');
     dispatchSyncState = { ...data, loading: false, error: '' };

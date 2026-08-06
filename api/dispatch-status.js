@@ -18,8 +18,11 @@ module.exports = async (req, res) => {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const config = getConfig();
-    const accessToken = await getAccessToken(config);
+    // 담당자가 본인 구글 계정으로 연결했으면 그 토큰으로 본인 시트를 읽는다.
+    // 토큰이 없으면 종전대로 서버 서비스 계정이 공용 시트를 읽는다.
+    const userConfig = getUserConfig(req);
+    const config = userConfig || getConfig();
+    const accessToken = userConfig ? userConfig.accessToken : await getAccessToken(config);
     const values = await readSheet(config, accessToken);
     const result = filterByApplicant(normalizeSheetRows(values), config.applicantName);
     return res.status(200).json({
@@ -34,6 +37,31 @@ module.exports = async (req, res) => {
     return res.status(status).json({ error: error.publicMessage || '발송 시트 데이터를 불러오지 못했습니다.' });
   }
 };
+
+// 브라우저가 보낸 담당자 본인 구글 토큰과 시트 설정. 토큰이 없으면 null.
+// 토큰은 저장하지 않고 이 요청에서 구글 호출에만 쓴다.
+function getUserConfig(req) {
+  const accessToken = String(req.headers['x-sheet-token'] || '').trim();
+  if (!accessToken) return null;
+  const spreadsheetId = String(req.headers['x-sheet-id'] || '').trim();
+  const range = decodeHeader(req.headers['x-sheet-range']);
+  if (!spreadsheetId || !range) {
+    const error = new Error('User sheet configuration is missing');
+    error.statusCode = 400;
+    error.publicMessage = '설정에서 본인 구글시트 주소와 탭 범위를 먼저 저장하세요.';
+    throw error;
+  }
+  return { accessToken, spreadsheetId, range, applicantName: decodeHeader(req.headers['x-sheet-applicant']) };
+}
+
+// 시트 탭명·신청인은 한글이라 헤더에 그대로 실으면 깨진다. 클라이언트가 encodeURIComponent로 보낸다.
+function decodeHeader(value) {
+  try {
+    return decodeURIComponent(String(value || '')).trim();
+  } catch {
+    return '';
+  }
+}
 
 function getConfig() {
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
@@ -157,6 +185,8 @@ function normalizeSheetRows(values) {
 
 function filterByApplicant(result, applicantName) {
   const normalizedApplicant = normalizeApplicant(applicantName);
+  // 본인 시트에 본인 행만 있으면 신청인을 비워두고 전체를 쓴다.
+  if (!normalizedApplicant) return { ...result, summary: buildSummary(result.records, result.unmatchedRecords) };
   const records = result.records.filter(record => normalizeApplicant(record.applicant) === normalizedApplicant);
   const unmatchedRecords = result.unmatchedRecords.filter(record => normalizeApplicant(record.applicant) === normalizedApplicant);
   return { records, unmatchedRecords, summary: buildSummary(records, unmatchedRecords) };
