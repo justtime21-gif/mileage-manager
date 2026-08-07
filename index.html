@@ -332,7 +332,10 @@
           <h2>대시보드</h2>
           <p id="dash-date">오늘 날짜</p>
         </div>
-        <button class="btn btn-primary" onclick="navigate('prescriptions')">+ 처방 입력</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="dash-google-btn" class="btn btn-accent" onclick="connectGoogleFromDispatch()">🔗 내 구글 계정 연결</button>
+          <button class="btn btn-primary" onclick="navigate('prescriptions')">+ 처방 입력</button>
+        </div>
       </div>
       <div id="dash-order-schedule" style="margin-bottom:12px"></div>
       <div class="stats-grid" id="dash-stats"></div>
@@ -1724,15 +1727,18 @@ function disconnectGoogleSheet() {
 
 // 발송 관리 헤더의 연결 버튼. 설정 화면을 열지 않아도 로그인 상태가 보이게 한다.
 function renderGoogleButton() {
-  const btn = document.getElementById('pt-google-btn');
-  if (!btn) return;
-  if (isGoogleConnected()) {
-    btn.textContent = '✅ 내 구글 연결됨';
-    btn.className = 'btn btn-outline';
-  } else {
-    btn.textContent = hasGoogleSheetSettings() ? '🔗 구글 다시 연결' : '🔗 내 구글 계정 연결';
-    btn.className = 'btn btn-primary';
-  }
+  const connected = isGoogleConnected();
+  const label = connected ? '✅ 내 구글 연결됨'
+    : hasGoogleSheetSettings() ? '🔗 구글 다시 연결'
+    : '🔗 내 구글 계정 연결';
+  // 연결 전에는 주황(할 일)으로 눈에 띄게, 연결 후에는 조용한 상태 표시로 둔다.
+  const cls = connected ? 'btn btn-outline' : 'btn btn-accent';
+  ['pt-google-btn', 'dash-google-btn'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.textContent = label;
+    btn.className = cls;
+  });
 }
 
 // 헤더 버튼에서 바로 연결. 시트 설정이 없으면 설정 화면으로 보낸다.
@@ -1793,6 +1799,7 @@ function loadDispatchCache() {
 function renderDashboard() {
   const d = new Date();
   document.getElementById('dash-date').textContent = d.toLocaleDateString('ko-KR', { year:'numeric', month:'long', day:'numeric', weekday:'long' });
+  renderGoogleButton();
 
   const totalBalance = clinics.reduce((s, c) => s + getClinicBalance(c.id).balance, 0);
   const totalEarned = transactions.filter(t => t.type === 'earn').reduce((s, t) => s + t.amount, 0);
