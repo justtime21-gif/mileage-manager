@@ -1619,34 +1619,61 @@ function loadScriptOnce(src) {
 }
 
 // interactive=false면 이미 로그인된 계정으로 조용히 갱신만 시도한다(동기화 때 사용).
-async function ensureGoogleToken(interactive = true) {
-  if (isGoogleConnected()) return googleToken.value;
+// 진행 중인 토큰 요청. 구글 콜백이 전역으로 오므로 여기에 resolve/reject를 걸어둔다.
+let googlePending = null;
+let googleClientReady = null;
 
-  const res = await fetch('/api/google-config').catch(() => null);
-  const clientId = res && res.ok ? (await res.json()).clientId : '';
-  if (!clientId) throw new Error('구글 로그인 설정(GOOGLE_OAUTH_CLIENT_ID)이 서버에 없습니다.');
-
-  await loadScriptOnce('https://accounts.google.com/gsi/client');
-
-  return new Promise((resolve, reject) => {
+// 클라이언트 준비(설정 조회 + 스크립트 로드 + 토큰 클라이언트 생성)를 미리 끝내둔다.
+// 버튼을 누른 뒤에 await가 끼면 Safari가 사용자 클릭과의 연결이 끊긴 것으로 보고 팝업을 막는다.
+function prepareGoogleClient() {
+  if (googleClientReady) return googleClientReady;
+  googleClientReady = (async () => {
+    const res = await fetch('/api/google-config').catch(() => null);
+    const clientId = res && res.ok ? (await res.json()).clientId : '';
+    if (!clientId) throw new Error('구글 로그인 설정(GOOGLE_OAUTH_CLIENT_ID)이 서버에 없습니다.');
+    await loadScriptOnce('https://accounts.google.com/gsi/client');
     googleTokenClient = google.accounts.oauth2.initTokenClient({
       client_id: clientId,
       scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
-      prompt: interactive ? '' : 'none',
       callback: response => {
-        if (!response.access_token) return reject(new Error('구글 로그인이 취소되었습니다.'));
+        const pending = googlePending;
+        googlePending = null;
+        if (!response.access_token) return pending?.reject(new Error('구글 로그인이 취소되었습니다.'));
         googleToken = {
           value: response.access_token,
           // 만료 직전 실패를 피하려고 60초 일찍 만료로 본다
           expiresAt: Date.now() + (Number(response.expires_in || 3600) - 60) * 1000,
         };
         renderGoogleSheetStatus();
-        resolve(googleToken.value);
+        pending?.resolve(googleToken.value);
       },
-      error_callback: err => reject(new Error(err?.message || '구글 로그인에 실패했습니다.')),
+      error_callback: err => {
+        const pending = googlePending;
+        googlePending = null;
+        pending?.reject(new Error(err?.message || '구글 로그인에 실패했습니다.'));
+      },
     });
-    googleTokenClient.requestAccessToken();
+    return googleTokenClient;
+  })();
+  // 실패는 캐시하지 않는다 — 다음 클릭이 다시 시도한다.
+  googleClientReady.catch(() => { googleClientReady = null; });
+  return googleClientReady;
+}
+
+// 반드시 클릭 핸들러에서 await 없이 곧바로 부를 것. Promise 실행부는 동기라 팝업이 클릭에 붙는다.
+function requestGoogleToken(interactive = true) {
+  return new Promise((resolve, reject) => {
+    if (!googleTokenClient) return reject(new Error('구글 로그인 준비가 아직 끝나지 않았습니다. 잠시 후 다시 눌러주세요.'));
+    googlePending = { resolve, reject };
+    googleTokenClient.requestAccessToken({ prompt: interactive ? '' : 'none' });
   });
+}
+
+// 동기화처럼 클릭이 없는 경로에서만 사용한다(조용한 갱신). 여기서는 팝업이 떠도 막히는 게 정상이다.
+async function ensureGoogleToken(interactive = false) {
+  if (isGoogleConnected()) return googleToken.value;
+  await prepareGoogleClient();
+  return requestGoogleToken(interactive);
 }
 
 function readGoogleSheetInputs() {
@@ -1663,17 +1690,27 @@ function saveGoogleSheetSettings() {
   alert('✅ 저장했습니다. "구글 계정으로 연결"을 눌러 로그인하세요.');
 }
 
-async function connectGoogleSheet() {
+// async로 만들지 말 것 — requestGoogleToken()이 클릭과 같은 실행 흐름에서 불려야 팝업이 뜬다.
+function connectGoogleSheet() {
   readGoogleSheetInputs();
   if (!hasGoogleSheetSettings()) return alert('시트 주소와 탭 범위를 먼저 입력하세요.');
-  try {
-    await ensureGoogleToken(true);
-    renderGoogleSheetStatus();
-    await loadDispatchStatus(true);
-    alert('✅ 내 구글시트에 연결되었습니다.');
-  } catch (e) {
-    alert(`구글 연결 실패: ${e.message}`);
+  startGoogleLogin();
+}
+
+function startGoogleLogin() {
+  if (!googleTokenClient) {
+    prepareGoogleClient()
+      .then(() => alert('구글 로그인 준비가 끝났습니다.\n버튼을 한 번 더 눌러주세요.'))
+      .catch(e => alert(`구글 연결 실패: ${e.message}`));
+    return;
   }
+  requestGoogleToken(true)
+    .then(() => {
+      renderGoogleSheetStatus();
+      return loadDispatchStatus(true);
+    })
+    .then(() => alert('✅ 내 구글시트에 연결되었습니다.'))
+    .catch(e => alert(`구글 연결 실패: ${e.message}`));
 }
 
 function disconnectGoogleSheet() {
@@ -1699,7 +1736,8 @@ function renderGoogleButton() {
 }
 
 // 헤더 버튼에서 바로 연결. 시트 설정이 없으면 설정 화면으로 보낸다.
-async function connectGoogleFromDispatch() {
+// async로 만들지 말 것 — 팝업이 클릭에 붙어야 Safari가 막지 않는다.
+function connectGoogleFromDispatch() {
   if (!hasGoogleSheetSettings()) {
     alert('먼저 설정에서 내 발송시트 주소와 탭 범위를 입력하세요.\n설정 → 신청일정 → 내 구글시트 연동');
     navigate('settings');
@@ -1707,14 +1745,7 @@ async function connectGoogleFromDispatch() {
     document.getElementById('gs-sheet-url')?.focus();
     return;
   }
-  try {
-    await ensureGoogleToken(true);
-    renderGoogleButton();
-    await loadDispatchStatus(true);
-    alert('✅ 내 구글시트에 연결되었습니다.');
-  } catch (e) {
-    alert(`구글 연결 실패: ${e.message}`);
-  }
+  startGoogleLogin();
 }
 
 function renderGoogleSheetStatus() {
@@ -4636,6 +4667,9 @@ function saveQuickRecords() {
 // ===== INIT =====
 document.getElementById('dash-date').textContent = new Date().toLocaleDateString('ko-KR', { year:'numeric', month:'long', day:'numeric', weekday:'long' });
 renderDashboard();
+// 구글 로그인 준비를 미리 끝내둔다. 첫 클릭에서 준비를 시작하면 그 사이 await 때문에 팝업이 막힌다.
+// 실패해도 조용히 넘어간다 — 연결 버튼을 누를 때 실제 사유를 안내한다.
+prepareGoogleClient().catch(() => {});
 </script>
 
 
