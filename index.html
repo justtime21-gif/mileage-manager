@@ -423,6 +423,10 @@
                 <span id="prev-rx-label" style="font-size:13px;color:#166534"></span>
                 <button class="btn btn-sm" onclick="loadPrevRx()" style="background:#16a34a;color:white;white-space:nowrap;flex-shrink:0">이전 처방 불러오기</button>
               </div>
+              <button id="crm-rx-btn" class="btn btn-outline btn-sm" style="margin-top:8px;width:100%" onclick="loadRxFromCrm()">
+                📥 CRM에서 처방량 불러오기
+              </button>
+              <div id="crm-rx-status" style="margin-top:6px;font-size:13px"></div>
             </div>
           </div>
           <div class="form-row" style="grid-template-columns:1fr 1fr">
@@ -2349,6 +2353,89 @@ function loadPrevRx() {
   if (!rxItems.length) { addRxItem(); addRxItem(); addRxItem(); }
   renderRxItemRows();
   calcRxTotal();
+}
+
+// ===== CRM 처방량 불러오기 =====
+// 담당자가 CRM에 올린 처방통계가 이미 거래처별·약품별 수량으로 들어가 있다.
+// 같은 숫자를 손으로 다시 넣지 않도록 그대로 끌어온다.
+
+// 처방 기간이 걸친 달을 모두 뽑는다 (예: 5.26~6.27 → ['5월','6월']).
+function monthsInRange(start, end) {
+  const months = [];
+  const [sy, sm] = start.split('-').map(Number);
+  const [ey, em] = end.split('-').map(Number);
+  for (let y = sy, m = sm; y < ey || (y === ey && m <= em); m === 12 ? (m = 1, y++) : m++) {
+    months.push(`${m}월`);
+    if (months.length > 12) break;   // 잘못된 기간 입력 시 무한 루프 방지
+  }
+  return months;
+}
+
+async function loadRxFromCrm() {
+  const clinicId = document.getElementById('rx-clinic').value;
+  const start = document.getElementById('rx-start').value;
+  const end = document.getElementById('rx-end').value;
+  const statusEl = document.getElementById('crm-rx-status');
+  const btn = document.getElementById('crm-rx-btn');
+  const show = (html, color) => { statusEl.innerHTML = `<span style="color:${color}">${html}</span>`; };
+
+  if (!clinicId) return alert('거래선을 먼저 선택하세요.');
+  if (!start || !end) return alert('처방 기간을 먼저 입력하세요.');
+  if (end < start) return alert('처방 종료일이 시작일보다 빠릅니다.');
+
+  const clinic = clinics.find(c => c.id === clinicId);
+  const all = monthsInRange(start, end);
+  // CRM이 months를 4개까지만 받는다. 잘린 달을 숨기지 않고 알린다.
+  const months = all.slice(0, 4);
+  const dropped = all.slice(4);
+
+  btn.disabled = true;
+  show('CRM에서 불러오는 중…', 'var(--gray-500)');
+  try {
+    const query = new URLSearchParams({ clinicName: clinic.name, months: months.join(',') });
+    const res = await fetch(`/api/crm-rx?${query}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `CRM 조회 실패 (${res.status})`);
+
+    // 앱의 약품 목록과는 보험코드로 잇는다 — 이름 표기는 시트마다 달라 믿을 수 없다.
+    const matched = [];
+    const noDrug = [];
+    (data.items || []).forEach(item => {
+      const drug = rxDrugs.find(d => d.code === item.code);
+      if (drug) matched.push({ drug, qty: item.qty });
+      else noDrug.push(item.label);
+    });
+
+    if (!matched.length) {
+      show(`불러올 처방량이 없습니다. CRM에 ${escapeHtml(months.join('·'))} 기록이 없거나 거래처명이 시트와 다를 수 있습니다.`, 'var(--danger)');
+      return;
+    }
+
+    // applyOcrResult()와 같은 병합 규칙 — 있으면 수량만 갱신, 없으면 행 추가
+    rxItems = rxItems.filter(r => r.name || r.qty);
+    matched.forEach(({ drug, qty }) => {
+      const exist = rxItems.find(r => r.drugId === drug.id);
+      if (exist) { exist.qty = String(qty); return; }
+      rxItems.push({ id: uid(), drugId: drug.id, name: drug.name, qty: String(qty), price: String(drug.price) });
+    });
+    renderRxItemRows();
+    calcRxTotal();
+
+    const totalQty = matched.reduce((s, m) => s + m.qty, 0);
+    const warn = [];
+    if (dropped.length) warn.push(`${dropped.join('·')}은 CRM 상한(4개월)으로 제외됨`);
+    if ((data.unmatched || []).length) warn.push(`앱 약품 목록에 없는 항목: ${data.unmatched.map(u => u.name).join(', ')}`);
+    if (noDrug.length) warn.push(`보험코드가 맞는 약품이 없음: ${noDrug.join(', ')}`);
+    show(
+      `✅ ${escapeHtml((data.months || []).join('·') || months.join('·'))} · ${matched.length}개 품목 · 총 ${fmtNum(totalQty)}` +
+      (warn.length ? `<div style="color:var(--danger);margin-top:4px">⚠️ ${escapeHtml(warn.join(' / '))}</div>` : ''),
+      'var(--primary)'
+    );
+  } catch (e) {
+    show(`불러오기 실패: ${escapeHtml(e.message)}`, 'var(--danger)');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function addRxItem() {
