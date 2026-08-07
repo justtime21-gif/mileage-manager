@@ -884,6 +884,15 @@
     </div>
     <div class="form-row">
       <div class="form-group" style="grid-column:1/-1">
+        <label>CRM 거래처명 (선택)</label>
+        <input type="text" id="cm-crm-name" placeholder="예: 서울루트플란트치과의원 — 비우면 위 거래선명으로 조회">
+        <div class="text-sm" style="color:var(--gray-500);margin-top:4px">
+          CRM 처방통계 시트에 적힌 정식 상호명. 표기가 다르면 처방량을 못 불러옵니다.
+        </div>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="grid-column:1/-1">
         <label>거래 시작</label>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <select id="cm-start-type" onchange="toggleStartDate()" style="border:1px solid var(--gray-300);border-radius:6px;padding:6px 10px;font-size:14px">
@@ -2156,6 +2165,7 @@ function openClinicModal(id = null) {
   document.getElementById('cm-rate').value = c?.rate ?? 10;
   document.getElementById('cm-initial').value = c?.initialBalance || 0;
   document.getElementById('cm-address').value = c?.address || '';
+  document.getElementById('cm-crm-name').value = c?.crmName || '';
   document.getElementById('cm-no-mileage').checked = c?.noMileage || false;
   document.getElementById('cm-dual-track').checked = c?.dualTrack || false;
 
@@ -2220,6 +2230,7 @@ function saveClinic() {
   const noMileage = document.getElementById('cm-no-mileage').checked;
   const dualTrack = document.getElementById('cm-dual-track').checked;
   const address = document.getElementById('cm-address').value.trim();
+  const crmName = document.getElementById('cm-crm-name').value.trim();
   let startYm = '';
   if (document.getElementById('cm-start-type').value === 'new') {
     const y = document.getElementById('cm-start-year').value;
@@ -2228,11 +2239,11 @@ function saveClinic() {
   }
   if (editingClinicId) {
     const c = clinics.find(x => x.id === editingClinicId);
-    Object.assign(c, { name, branch, rate, initialBalance, regularPromos, noMileage, dualTrack, address, startYm, updatedAt: Date.now() });
+    Object.assign(c, { name, branch, rate, initialBalance, regularPromos, noMileage, dualTrack, address, crmName, startYm, updatedAt: Date.now() });
   } else {
     savedId = uid();
     const savedAt = Date.now();
-    clinics.push({ id: savedId, name, branch, rate, initialBalance, regularPromos, noMileage, dualTrack, address, startYm, createdAt: savedAt, updatedAt: savedAt });
+    clinics.push({ id: savedId, name, branch, rate, initialBalance, regularPromos, noMileage, dualTrack, address, crmName, startYm, createdAt: savedAt, updatedAt: savedAt });
   }
   save();
   closeClinicModal();
@@ -2392,7 +2403,10 @@ async function loadRxFromCrm() {
   btn.disabled = true;
   show('CRM에서 불러오는 중…', 'var(--gray-500)');
   try {
-    const query = new URLSearchParams({ clinicName: clinic.name, months: months.join(',') });
+    // CRM 시트는 정식 상호명을 쓴다(루트플란트치과 ≠ 서울루트플란트치과의원).
+    // 완전 일치로만 찾으므로 거래선에 등록해 둔 CRM 명칭을 우선한다.
+    const crmName = (clinic.crmName || '').trim() || clinic.name;
+    const query = new URLSearchParams({ clinicName: crmName, months: months.join(',') });
     const res = await fetch(`/api/crm-rx?${query}`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `CRM 조회 실패 (${res.status})`);
@@ -2407,7 +2421,15 @@ async function loadRxFromCrm() {
     });
 
     if (!matched.length) {
-      show(`불러올 처방량이 없습니다. CRM에 ${escapeHtml(months.join('·'))} 기록이 없거나 거래처명이 시트와 다를 수 있습니다.`, 'var(--danger)');
+      // 원인이 둘뿐이라 둘 다 짚어준다 — "없습니다"만 띄우면 어디를 고쳐야 할지 모른다.
+      show(
+        `불러올 처방량이 없습니다. <strong>${escapeHtml(crmName)}</strong>(으)로 조회했습니다.` +
+        `<div style="margin-top:4px;color:var(--gray-600)">` +
+        `· CRM 시트의 상호명과 다르면 거래선 수정에서 <strong>CRM 거래처명</strong>을 넣으세요 (예: 서울루트플란트치과의원)<br>` +
+        `· CRM 팀 시트는 <strong>최근 두 달</strong>만 남습니다. 그보다 오래된 달은 조회되지 않습니다.` +
+        `</div>`,
+        'var(--danger)'
+      );
       return;
     }
 

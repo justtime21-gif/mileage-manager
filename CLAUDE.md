@@ -43,6 +43,7 @@ index.html          앱 전체 (HTML + CSS + JS, 약 2,400줄)
   noMileage,    // true면 발송 기록만 (마일리지 차감 없음)
   dualTrack,    // true면 마일리지 + 정기 발송 병행
   startYm,      // 거래 시작 연월 (예: "2025-03")
+  crmName,      // CRM 처방통계 시트의 정식 상호명 (예: "서울루트플란트치과의원"). 비우면 name으로 조회
 }
 ```
 
