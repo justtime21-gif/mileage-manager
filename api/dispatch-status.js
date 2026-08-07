@@ -21,7 +21,10 @@ module.exports = async (req, res) => {
     // 담당자가 본인 구글 계정으로 연결했으면 그 토큰으로 본인 시트를 읽는다.
     // 토큰이 없으면 종전대로 서버 서비스 계정이 공용 시트를 읽는다.
     const userConfig = getUserConfig(req);
-    const config = userConfig || getConfig();
+    // 공용 시트를 그대로 쓰면서 신청인만 담당자별로 바꾸는 경우.
+    // 서버 환경변수의 신청인은 한 사람으로 고정돼 있어 두면 모두가 같은 행을 본다.
+    const applicantOverride = decodeHeader(req.headers['x-sheet-applicant']);
+    const config = userConfig || { ...getConfig(), ...(applicantOverride ? { applicantName: applicantOverride } : {}) };
     const accessToken = userConfig ? userConfig.accessToken : await getAccessToken(config);
     const values = await readSheet(config, accessToken);
     const result = filterByApplicant(normalizeSheetRows(values), config.applicantName);
