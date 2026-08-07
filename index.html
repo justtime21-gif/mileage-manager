@@ -611,6 +611,7 @@
       <div class="page-header flex justify-between items-center">
         <div><h2>🚚 판촉물 발송 현황</h2><p>월별 발송 체크리스트 및 거래선별 이력</p></div>
         <div style="display:flex;gap:8px;align-items:center">
+          <button id="pt-google-btn" class="btn btn-primary" onclick="connectGoogleFromDispatch()">🔗 내 구글 계정 연결</button>
           <button class="btn btn-outline" onclick="loadDispatchStatus(true)" title="구글시트 새로고침">↻ 시트 새로고침</button>
           <button class="btn btn-outline" onclick="navigate('redeem')">💳 마일리지 차감</button>
         </div>
@@ -1459,7 +1460,7 @@ function navigate(page) {
   if (page === 'rx-drugs') renderRxDrugs();
   if (page === 'promo-items') renderPromoItems();
   if (page === 'history') { renderHistoryFilters(); renderHistory(); }
-  if (page === 'promo-track') { renderPromoTrack(); loadDispatchStatus(); }
+  if (page === 'promo-track') { renderPromoTrack(); renderGoogleButton(); loadDispatchStatus(); }
   if (page === 'settings') { renderRxDrugs(); renderPromoItems(); renderOrderDateList(); renderGoogleSheetStatus(); renderClinicAddresses(); }
 }
 
@@ -1684,7 +1685,40 @@ function disconnectGoogleSheet() {
   loadDispatchStatus(true);
 }
 
+// 발송 관리 헤더의 연결 버튼. 설정 화면을 열지 않아도 로그인 상태가 보이게 한다.
+function renderGoogleButton() {
+  const btn = document.getElementById('pt-google-btn');
+  if (!btn) return;
+  if (isGoogleConnected()) {
+    btn.textContent = '✅ 내 구글 연결됨';
+    btn.className = 'btn btn-outline';
+  } else {
+    btn.textContent = hasGoogleSheetSettings() ? '🔗 구글 다시 연결' : '🔗 내 구글 계정 연결';
+    btn.className = 'btn btn-primary';
+  }
+}
+
+// 헤더 버튼에서 바로 연결. 시트 설정이 없으면 설정 화면으로 보낸다.
+async function connectGoogleFromDispatch() {
+  if (!hasGoogleSheetSettings()) {
+    alert('먼저 설정에서 내 발송시트 주소와 탭 범위를 입력하세요.\n설정 → 신청일정 → 내 구글시트 연동');
+    navigate('settings');
+    showSettingsTab('schedule');
+    document.getElementById('gs-sheet-url')?.focus();
+    return;
+  }
+  try {
+    await ensureGoogleToken(true);
+    renderGoogleButton();
+    await loadDispatchStatus(true);
+    alert('✅ 내 구글시트에 연결되었습니다.');
+  } catch (e) {
+    alert(`구글 연결 실패: ${e.message}`);
+  }
+}
+
 function renderGoogleSheetStatus() {
+  renderGoogleButton();
   const el = document.getElementById('gs-status');
   if (!el) return;
   document.getElementById('gs-sheet-url').value = appSettings.gsSheetUrl || '';
@@ -1909,6 +1943,7 @@ async function loadDispatchStatus(force = false) {
     dispatchSyncState = { ...dispatchSyncState, loading: false, error: error.message || '구글시트 연동에 실패했습니다.' };
   }
   renderDashboardWorklists();
+  renderGoogleButton();
   if (document.getElementById('page-promo-track')?.classList.contains('active')) renderPromoTrack();
 }
 
