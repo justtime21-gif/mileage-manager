@@ -1216,27 +1216,10 @@ function migrateClinicNames() {
 
 migrateClinicNames();
 
-function migrateRegularDeliveryClinics() {
-  const defaults = [
-    { name: '골드플러스치과', branch: '은평지점', regularPromos: ['종이컵'] },
-    { name: '바른우리치과', branch: '은평지점', regularPromos: ['종이컵'] },
-    { name: '운정뿌리사랑치과', branch: '파주지점', regularPromos: ['종이컵'] },
-    { name: '하얀미소치과', branch: '서대문지점', regularPromos: ['종이컵', '각티슈'] },
-  ];
-  let changed = false;
-  defaults.forEach(item => {
-    const existing = clinics.find(clinic => clinic.name.replace(/\s/g, '') === item.name.replace(/\s/g, ''));
-    if (existing) return;
-    clinics.push({
-      id: uid(), name: item.name, branch: item.branch, rate: 10, initialBalance: 0,
-      regularPromos: item.regularPromos, noMileage: true, dualTrack: false, address: '', startYm: '2026-07'
-    });
-    changed = true;
-  });
-  if (changed) DB.set('clinics', clinics);
-}
-
-migrateRegularDeliveryClinics();
+// 정기배송 거래처(골드플러스·바른우리·운정뿌리사랑·하얀미소)를 자동으로 넣던 코드를 제거했다.
+// 1회성 마이그레이션으로 썼는데 "이미 실행함" 표시가 없어 앱을 열 때마다 되살아났고,
+// 담당자별로 데이터가 분리된 뒤로는 남의 거래처가 지워도 계속 생기는 문제가 됐다.
+// 이미 등록된 거래처는 localStorage에 그대로 남는다 — 필요하면 직접 추가하면 된다.
 
 // 슬래시로 묶여 있던 판촉물을 개별 품목으로 분리 (기존 저장 데이터 1회 마이그레이션)
 function migrateCombinedPromoItems() {
