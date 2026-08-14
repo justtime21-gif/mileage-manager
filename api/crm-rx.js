@@ -19,7 +19,7 @@ const COL_TO_CODE = [
   ['알마펜', '053500090'],
 ];
 
-module.exports = async (req, res) => {
+export default async (req, res) => {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   const syncKey = String(process.env.SYNC_API_KEY || '').trim();
@@ -102,4 +102,4 @@ function codeFromHeader(header) {
   return hit ? hit[1] : '';
 }
 
-module.exports.summarize = summarize;
+export { summarize };

@@ -1,4 +1,4 @@
-const crypto = require('crypto');
+import crypto from 'node:crypto';
 
 const REQUIRED_HEADERS = {
   clinic: ['거래처', '거래선', '요양기관명', '병원', '치과', 'clinic', 'account'],
@@ -14,7 +14,7 @@ const OPTIONAL_HEADERS = {
   branch: ['영업본부', '본부', '지점'],
 };
 
-module.exports = async (req, res) => {
+export default async (req, res) => {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
@@ -266,4 +266,4 @@ function emptySummary() {
   return { total: 0, paperCupPending: 0, paperCupCompleted: 0, review: 0 };
 }
 
-module.exports._test = { normalizeSheetRows, normalizeStatus, normalizeDate, normalizeMonth, findHeaderRow, filterByApplicant };
+export const _test = { normalizeSheetRows, normalizeStatus, normalizeDate, normalizeMonth, findHeaderRow, filterByApplicant };

@@ -1,5 +1,5 @@
 // 클로바 OCR(General) 프록시 — CRM(mr-crm)의 회전보정 알고리즘을 이식
-module.exports = async (req, res) => {
+export default async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   // CRM 환경변수 이름 우선, 마일리지 앱 이름 fallback
