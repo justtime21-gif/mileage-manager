@@ -294,6 +294,8 @@
   .qp-preview-table td { padding: 7px 10px; border-top: 1px solid var(--gray-100); vertical-align: middle; }
   .qp-new-badge { font-size: 11px; background: #fef3c7; color: #92400e; padding: 1px 6px; border-radius: 3px; margin-left: 4px; }
 </style>
+<script defer crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@clerk/ui@1/dist/ui.browser.js"></script>
+<script defer crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@6/dist/clerk.browser.js"></script>
 </head>
 <body>
 <div class="app">
@@ -302,6 +304,8 @@
     <div class="sidebar-logo">
       <h1>💊 마일리지 관리</h1>
       <small>거래선 처방 마일리지</small>
+      <div id="mileage-auth-status" style="margin-top:12px;font-size:11px;line-height:1.5;opacity:.85">로그인 확인 중…</div>
+      <button id="mileage-auth-btn" class="btn btn-outline btn-sm" style="margin-top:8px;width:100%;justify-content:center;display:none" onclick="handleMileageAuth()">Google 로그인</button>
     </div>
     <nav>
       <div class="nav-item active" data-nav="dashboard" onclick="navigate('dashboard')">
@@ -1183,6 +1187,140 @@ const DB = {
   set(key, val) { localStorage.setItem('mileage_' + key, JSON.stringify(val)); },
 };
 
+let mileageClerk = null;
+let mileageServerReady = false;
+let mileageServerHydrating = false;
+let mileageServerSyncTimer = null;
+let mileageServerSaving = false;
+let mileageServerDirty = false;
+
+function mileageStatePayload() {
+  return { clinics, transactions, rxDrugs, promoItems, appSettings, reportSnapshots };
+}
+
+function renderMileageAuthStatus(message, tone = '') {
+  const status = document.getElementById('mileage-auth-status');
+  const button = document.getElementById('mileage-auth-btn');
+  if (status) {
+    status.textContent = message;
+    status.style.color = tone === 'error' ? '#fecaca' : tone === 'ok' ? '#bbf7d0' : 'rgba(255,255,255,.85)';
+  }
+  if (button) {
+    button.style.display = mileageClerk ? 'inline-flex' : 'none';
+    button.textContent = mileageClerk?.session ? '로그아웃' : 'Google 로그인';
+  }
+}
+
+async function mileageApiFetch(path, options = {}) {
+  if (!mileageClerk?.session) throw new Error('로그인이 필요합니다.');
+  const token = await mileageClerk.session.getToken();
+  const headers = new Headers(options.headers || {});
+  headers.set('Authorization', `Bearer ${token}`);
+  if (options.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  return fetch(path, { ...options, headers });
+}
+
+function queueMileageServerSave() {
+  if (!mileageServerReady || mileageServerHydrating || !mileageClerk?.session) return;
+  mileageServerDirty = true;
+  clearTimeout(mileageServerSyncTimer);
+  mileageServerSyncTimer = setTimeout(saveMileageStateToServer, 350);
+}
+
+async function saveMileageStateToServer() {
+  if (mileageServerSaving || !mileageServerReady || !mileageClerk?.session) return;
+  mileageServerSaving = true;
+  mileageServerDirty = false;
+  try {
+    const response = await mileageApiFetch('/api/mileage-state', {
+      method: 'PUT', body: JSON.stringify(mileageStatePayload()),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || '서버 저장에 실패했습니다.');
+    renderMileageAuthStatus(`✅ 서버 저장됨 · ${formatSyncTime(data.updatedAt)}`, 'ok');
+  } catch (error) {
+    console.error('[mileage server save]', error);
+    renderMileageAuthStatus(`⚠️ 서버 저장 실패 · ${error.message}`, 'error');
+  } finally {
+    mileageServerSaving = false;
+    if (mileageServerDirty) queueMileageServerSave();
+  }
+}
+
+async function hydrateMileageState() {
+  if (!mileageClerk?.session) return;
+  mileageServerHydrating = true;
+  try {
+    const response = await mileageApiFetch('/api/mileage-state');
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || '서버 데이터를 불러오지 못했습니다.');
+    if (data.state) {
+      clinics = Array.isArray(data.state.clinics) ? data.state.clinics : [];
+      transactions = Array.isArray(data.state.transactions) ? data.state.transactions : [];
+      rxDrugs = Array.isArray(data.state.rxDrugs) ? data.state.rxDrugs : getDefaultRxDrugs();
+      promoItems = Array.isArray(data.state.promoItems) ? data.state.promoItems : getDefaultPromoItems();
+      appSettings = data.state.appSettings && typeof data.state.appSettings === 'object' ? data.state.appSettings : { orderDates: [], promoSheetUrl: '' };
+      reportSnapshots = data.state.reportSnapshots && typeof data.state.reportSnapshots === 'object' ? data.state.reportSnapshots : {};
+      migrateBrochureDrugs();
+      migrateCombinedPromoItems();
+      migrateClinicNames();
+      renderMileageAuthStatus(`✅ ${data.user?.mrName || data.user?.name || data.user?.email || '내 계정'} 서버 데이터`, 'ok');
+    } else {
+      const hasLocalData = clinics.length || transactions.length;
+      if (hasLocalData && confirm('이 브라우저에 저장된 기존 마일리지 데이터를 현재 로그인 계정의 서버 DB로 옮길까요?')) {
+        mileageServerReady = true;
+        await saveMileageStateToServer();
+      }
+      renderMileageAuthStatus('✅ 서버 저장 준비됨', 'ok');
+    }
+    mileageServerReady = true;
+    renderDashboard();
+    const activePage = document.querySelector('.page.active')?.id?.replace('page-', '');
+    if (activePage) navigate(activePage);
+  } catch (error) {
+    console.error('[mileage server hydrate]', error);
+    renderMileageAuthStatus(`⚠️ 서버 연결 실패 · ${error.message}`, 'error');
+  } finally {
+    mileageServerHydrating = false;
+  }
+}
+
+async function updateMileageAuthUi() {
+  if (!mileageClerk?.session) {
+    mileageServerReady = false;
+    renderMileageAuthStatus('Google 로그인 후 서버에 저장됩니다.');
+    return;
+  }
+  await hydrateMileageState();
+}
+
+async function handleMileageAuth() {
+  if (!mileageClerk) return alert('로그인 설정을 불러오는 중입니다. 잠시 후 다시 시도하세요.');
+  if (mileageClerk.session) return mileageClerk.signOut();
+  await mileageClerk.openSignIn();
+}
+
+async function initMileageAuth() {
+  try {
+    const response = await fetch('/api/clerk-config');
+    if (!response.ok) {
+      renderMileageAuthStatus('로그인 설정이 아직 배포되지 않았습니다.', 'error');
+      return;
+    }
+    const { publishableKey } = await response.json();
+    if (!publishableKey || !window.Clerk) throw new Error('Clerk 설정을 불러오지 못했습니다.');
+    mileageClerk = new window.Clerk(publishableKey);
+    await mileageClerk.load({ ui: { ClerkUI: window.__internal_ClerkUICtor } });
+    mileageClerk.addListener(({ session }) => {
+      updateMileageAuthUi().catch(error => console.error('[mileage auth]', error));
+    });
+    await updateMileageAuthUi();
+  } catch (error) {
+    console.error('[mileage auth init]', error);
+    renderMileageAuthStatus(`로그인 초기화 실패 · ${error.message}`, 'error');
+  }
+}
+
 let clinics = DB.get('clinics', []);
 let rxDrugs = DB.get('rxDrugs', getDefaultRxDrugs());
 migrateBrochureDrugs();
@@ -1201,6 +1339,7 @@ function save() {
   DB.set('transactions', transactions);
   DB.set('appSettings', appSettings);
   DB.set('reportSnapshots', reportSnapshots);
+  queueMileageServerSave();
 }
 
 function migrateClinicNames() {
@@ -2180,6 +2319,22 @@ function openClinicModal(id = null) {
 
 function closeClinicModal() { document.getElementById('clinic-modal').classList.remove('open'); }
 
+// 시트 확인 목록에서 바로 거래선 추가 화면을 열고 거래처명을 미리 채운다.
+function openClinicModalWithName(name) {
+  const clinicName = String(name || '').trim();
+  if (!clinicName) return;
+  const existing = findClinicExactByName(clinicName);
+  if (existing) {
+    editClinic(existing.id);
+    return;
+  }
+  clinicModalFromRx = false;
+  clinicModalFromSheetReview = true;
+  openClinicModal();
+  document.getElementById('cm-name').value = clinicName;
+  document.getElementById('cm-name').focus();
+}
+
 function toggleRegularPromos(forceOpen) {
   const wrap = document.getElementById('cm-regular-promo-wrap');
   const arrow = document.getElementById('cm-promo-arrow');
@@ -2194,6 +2349,7 @@ function toggleStartDate() {
 }
 
 let clinicModalFromRx = false;
+let clinicModalFromSheetReview = false;
 
 function openClinicModalFromRx() {
   clinicModalFromRx = true;
@@ -2231,6 +2387,11 @@ function saveClinic() {
   save();
   closeClinicModal();
   renderClinics();
+
+  if (clinicModalFromSheetReview) {
+    clinicModalFromSheetReview = false;
+    if (document.getElementById('page-promo-track')?.classList.contains('active')) renderPromoTrack();
+  }
 
   // 처방 입력 화면에서 신규 등록한 경우: 셀렉트 갱신 후 바로 선택
   if (clinicModalFromRx) {
@@ -3902,13 +4063,20 @@ function renderPromoSheetReview(year) {
   count.textContent = `${review.length}건`;
   root.innerHTML = review.map(row => {
     const date = row.sentDate || (row.requestMonth ? `${row.requestMonth}월` : '날짜 없음');
+    const clinicName = String(row.clinicName || '').trim();
+    const canAddClinic = clinicName && !findClinicExactByName(clinicName);
     return `<div style="display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--gray-100);font-size:13px;flex-wrap:wrap">
-      <strong style="min-width:130px">${escapeHtml(row.clinicName || '거래처명 없음')}</strong>
+      <strong style="min-width:130px">${escapeHtml(clinicName || '거래처명 없음')}</strong>
       <span style="color:var(--gray-600)">${escapeHtml(row.item || '품목 없음')}${row.quantity > 1 ? ` ×${row.quantity}` : ''}</span>
       <span style="color:var(--gray-500)">${escapeHtml(date)} · ${escapeHtml(row.rawStatus || '출고 상황 없음')}</span>
+      ${canAddClinic ? '<button type="button" class="btn btn-primary btn-sm sheet-add-clinic" style="margin-left:auto">거래처 추가</button>' : ''}
       <span style="margin-left:auto;color:var(--danger);font-size:12px">${escapeHtml(row.reviewReason || '확인 필요')}</span>
     </div>`;
   }).join('');
+  root.querySelectorAll('.sheet-add-clinic').forEach(button => {
+    const name = button.parentElement?.querySelector('strong')?.textContent?.trim() || '';
+    button.addEventListener('click', () => openClinicModalWithName(name));
+  });
 }
 
 function renderPromoChecklist(year) {
@@ -4790,6 +4958,7 @@ renderDashboard();
 // 구글 로그인 준비를 미리 끝내둔다. 첫 클릭에서 준비를 시작하면 그 사이 await 때문에 팝업이 막힌다.
 // 실패해도 조용히 넘어간다 — 연결 버튼을 누를 때 실제 사유를 안내한다.
 prepareGoogleClient().catch(() => {});
+initMileageAuth();
 </script>
 
 

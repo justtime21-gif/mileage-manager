@@ -1,0 +1,9 @@
+{
+  "name": "mileage-manager",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@clerk/backend": "^2.33.5",
+    "@supabase/supabase-js": "^2.108.2"
+  }
+}
