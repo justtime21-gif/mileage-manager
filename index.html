@@ -294,8 +294,6 @@
   .qp-preview-table td { padding: 7px 10px; border-top: 1px solid var(--gray-100); vertical-align: middle; }
   .qp-new-badge { font-size: 11px; background: #fef3c7; color: #92400e; padding: 1px 6px; border-radius: 3px; margin-left: 4px; }
 </style>
-<script defer crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@clerk/ui@1/dist/ui.browser.js"></script>
-<script defer crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@6/dist/clerk.browser.js"></script>
 </head>
 <body>
 <div class="app">
@@ -1300,6 +1298,32 @@ async function handleMileageAuth() {
   await mileageClerk.openSignIn();
 }
 
+function clerkFrontendApiFromPublishableKey(publishableKey) {
+  const encoded = String(publishableKey || '').split('_').slice(2).join('_');
+  if (!encoded) return '';
+  try {
+    const padded = encoded.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - encoded.length % 4) % 4);
+    return atob(padded).replace(/[\u0000-\u001f\u007f]/g, '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function loadClerkScript(src, attributes = {}) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) return existing.dataset.loaded === 'true' ? resolve() : existing.addEventListener('load', resolve, { once: true });
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.crossOrigin = 'anonymous';
+    Object.entries(attributes).forEach(([key, value]) => script.setAttribute(key, value));
+    script.addEventListener('load', () => { script.dataset.loaded = 'true'; resolve(); }, { once: true });
+    script.addEventListener('error', () => reject(new Error('Clerk 로그인 스크립트를 불러오지 못했습니다.')), { once: true });
+    document.head.appendChild(script);
+  });
+}
+
 async function initMileageAuth() {
   try {
     const response = await fetch('/api/clerk-config');
@@ -1308,7 +1332,14 @@ async function initMileageAuth() {
       return;
     }
     const { publishableKey } = await response.json();
-    if (!publishableKey || !window.Clerk) throw new Error('Clerk 설정을 불러오지 못했습니다.');
+    const frontendApi = clerkFrontendApiFromPublishableKey(publishableKey);
+    if (!publishableKey || !frontendApi) throw new Error('Clerk 설정을 불러오지 못했습니다.');
+    const clerkBase = `https://${frontendApi}`;
+    await loadClerkScript(`${clerkBase}/npm/@clerk/ui@1/dist/ui.browser.js`);
+    await loadClerkScript(`${clerkBase}/npm/@clerk/clerk-js@6/dist/clerk.browser.js`, {
+      'data-clerk-publishable-key': publishableKey,
+    });
+    if (!window.Clerk) throw new Error('Clerk 로그인 스크립트를 초기화하지 못했습니다.');
     mileageClerk = new window.Clerk(publishableKey);
     await mileageClerk.load({ ui: { ClerkUI: window.__internal_ClerkUICtor } });
     mileageClerk.addListener(({ session }) => {
