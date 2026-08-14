@@ -4958,7 +4958,8 @@ renderDashboard();
 // 구글 로그인 준비를 미리 끝내둔다. 첫 클릭에서 준비를 시작하면 그 사이 await 때문에 팝업이 막힌다.
 // 실패해도 조용히 넘어간다 — 연결 버튼을 누를 때 실제 사유를 안내한다.
 prepareGoogleClient().catch(() => {});
-initMileageAuth();
+// ClerkJS is loaded with `defer`; wait for the browser's load event so window.Clerk exists.
+window.addEventListener('load', () => initMileageAuth());
 </script>
 
 
