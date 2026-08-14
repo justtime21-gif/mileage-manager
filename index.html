@@ -1347,7 +1347,11 @@ async function initMileageAuth() {
       });
     }
     if (!window.Clerk) throw new Error('Clerk 로그인 스크립트를 초기화하지 못했습니다.');
-    mileageClerk = new window.Clerk(publishableKey);
+    // ClerkJS loaded from the browser CDN exposes an initialized Clerk
+    // instance on window.Clerk. Older bundles exposed a constructor instead.
+    mileageClerk = typeof window.Clerk === 'function'
+      ? new window.Clerk(publishableKey)
+      : window.Clerk;
     await mileageClerk.load({ ui: { ClerkUI: window.__internal_ClerkUICtor } });
     mileageClerk.addListener(({ session }) => {
       updateMileageAuthUi().catch(error => console.error('[mileage auth]', error));
