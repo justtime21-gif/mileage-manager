@@ -2062,7 +2062,7 @@ function renderDashboardWorklists() {
 
 function dispatchSubtitle(defaultText) {
   if (dispatchSyncState.loading) return '구글시트 동기화 중…';
-  if (dispatchSyncState.error) return `연동 오류 · ${escapeHtml(dispatchSyncState.error)}`;
+  if (dispatchSyncState.error) return `연동 오류 · ${escapeHtml(errorText(dispatchSyncState.error, '구글시트 연동에 실패했습니다.'))}`;
   if (!dispatchSyncState.syncedAt) return '구글시트 연결 후 발송 현황을 표시합니다.';
   return `${defaultText} · ${formatSyncTime(dispatchSyncState.syncedAt)} 동기화`;
 }
@@ -2093,6 +2093,13 @@ function dispatchRow(record, actionLabel) {
 
 function formatSyncTime(value) {
   return new Date(value).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function errorText(error, fallback = '알 수 없는 오류') {
+  if (typeof error === 'string' && error.trim()) return error;
+  if (error?.message && typeof error.message === 'string') return error.message;
+  if (error?.error && typeof error.error === 'string') return error.error;
+  return fallback;
 }
 
 function escapeHtml(value) {
@@ -2134,7 +2141,7 @@ async function loadDispatchStatus(force = false) {
     sessionStorage.setItem(DISPATCH_CACHE_KEY, JSON.stringify(dispatchSyncState));
     dispatchSyncState.autoSpends = syncSheetSpends();
   } catch (error) {
-    dispatchSyncState = { ...dispatchSyncState, loading: false, error: error.message || '구글시트 연동에 실패했습니다.' };
+    dispatchSyncState = { ...dispatchSyncState, loading: false, error: errorText(error, '구글시트 연동에 실패했습니다.') };
   }
   renderDashboardWorklists();
   renderGoogleButton();
