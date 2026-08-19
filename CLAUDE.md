@@ -80,6 +80,8 @@ index.html          앱 전체 (HTML + CSS + JS, 약 2,400줄)
 | `loadRxFromCrm()` | CRM(mr-crm)에서 거래처별 처방량을 불러와 처방 품목에 채움 |
 | `monthsInRange(start, end)` | 처방 기간이 걸친 달 목록 (예: 5.26~6.27 → `['5월','6월']`) |
 | `renderReport()` | Canvas API로 카톡 전송용 보고서 이미지 생성 |
+| `drawReport(d, canvas)` | 보고서 데이터를 캔버스에 그림 (모달·처방 입력 화면 공용) |
+| `renderRxLastReport()` | 처방 입력 화면 오른쪽에 선택 거래선의 마지막 전송 보고서 재출력 |
 | `exportData()` / `importData()` | JSON 백업 내보내기/가져오기 |
 | `parseDispatchText(text)` | 구글시트·자유형식 발송 텍스트 파싱 |
 | `loadDispatchStatus()` | 읽기 전용 구글시트에서 종이컵 발송 상태를 동기화 |
@@ -93,7 +95,8 @@ index.html          앱 전체 (HTML + CSS + JS, 약 2,400줄)
 |---------|------|------|
 | `dashboard` | 대시보드 | 마일리지 정리 필요 및 종이컵 발송 업무 목록 |
 | `clinics` | 거래선 관리 | CRUD + 보고서 생성 |
-| `prescriptions` / `history` | 마일리지 | 처방 입력 및 적립·차감 이력 조회 |
+| `prescriptions` / `history` | 마일리지 | 처방 입력 + 선택 거래선의 마지막 보고서 미리보기 |
+| `rx-history` | 처방 이력 | 처방 입력 이력 (전체/이번달) |
 | `redeem` / `promo-track` | 발송 관리 | 카톡 파싱, 판촉물 차감 및 발송 현황 |
 | `rx-drugs` | 처방약품 관리 | 약품명/보험코드/단가 관리 |
 | `promo-items` | 판촉물 목록 | 품목/가격 관리 + 이미지 내보내기 |
@@ -127,5 +130,6 @@ CSS 변수는 `:root`에 정의됨:
 - OCR은 **네이버 클로바 OCR**을 사용 (`api/ocr.js` 서버리스 함수 경유). Vercel 환경변수 `CLOVA_OCR_SECRET`, `CLOVA_OCR_URL` 필요. **GitHub Pages는 서버리스 함수가 없어 OCR이 동작하지 않음** — Vercel 배포(`mileage-manager.vercel.app`)에서만 사용 가능.
 - 종이컵 업무 목록은 `api/dispatch-status.js`가 구글시트를 읽기 전용으로 조회한다. `GOOGLE_SHEETS_APPLICANT_NAME`과 같은 `신청인` 행만 서버에서 반환하므로 다른 담당자 행은 브라우저로 전달되지 않는다. `.env.example`의 `GOOGLE_SHEETS_*`, `GOOGLE_SERVICE_ACCOUNT_*` 값을 Vercel 환경변수로 설정하고, 시트를 서비스 계정 이메일에 **뷰어 또는 편집자**로 공유해야 한다. `26y 판촉물 신청` 탭은 상단 안내 행을 건너뛰고 `요양기관명`, `신청인`, `항목`, `발주수량`, `출고 상황` 헤더를 자동 탐지한다. `출고 상황`의 `4/2 출고`는 완료와 출고일로 해석한다.
 - 처방 입력의 **CRM 처방량 불러오기**는 `api/crm-rx.js`가 CRM의 `GET /api/sheets/collected`를 대신 호출한다. Vercel 환경변수 `SYNC_API_KEY`(CRM과 **같은 값**), 선택적으로 `CRM_URL`이 필요하다. `SYNC_API_KEY`는 공유 시크릿이라 브라우저에 넣으면 안 되고, CRM에는 CORS 설정이 없어 직접 호출도 불가하므로 반드시 이 프록시를 경유한다. 약품은 **보험코드**로 잇는다 — 시트 헤더 표기는 달라질 수 있어 이름으로 매칭하지 않는다. 매핑표는 `api/crm-rx.js`의 `COL_TO_CODE`이며 원본은 `mr-crm/src/components/OcrSheetEntry.tsx`의 `DRUG_COLS`다. 제약: CRM이 `months`를 **4개월까지만** 받고, 팀 탭(`○월 처방통계_○○팀`)을 읽으므로 오래된 달은 비어 있을 수 있다. 거래처는 이름으로 조회하는데 **동명이 둘 이상이면 CRM이 빈 배열을 준다**.
+- `reportSnapshots[clinicId]`는 보고서 복사(전송) 시점의 `balance`, `at`, `date`와 함께 그때의 보고서 데이터(`report`)를 저장한다. 처방 입력 화면의 "마지막 보고서"는 이 `report`를 `drawReport()`로 다시 그린 것이라 이미지 자체는 저장하지 않는다. 기존 스냅샷에는 `report`가 없어 다음 전송부터 표시된다.
 - `uid()` 함수로 ID 생성. 기존 데이터의 id를 임의 변경하면 연결이 끊어짐.
 - 코드 수정 후 반드시 `save()` 호출해야 localStorage에 반영됨.
