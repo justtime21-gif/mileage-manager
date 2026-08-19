@@ -1322,7 +1322,8 @@ function clerkFrontendApiFromPublishableKey(publishableKey) {
   if (!encoded) return '';
   try {
     const padded = encoded.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - encoded.length % 4) % 4);
-    return atob(padded).replace(/[\u0000-\u001f\u007f]/g, '').trim();
+    // Clerk 키는 base64 끝에 '$' 센티널이 붙는다 — 남기면 호스트가 깨진다.
+    return atob(padded).replace(/[\u0000-\u001f\u007f]/g, '').replace(/\$+$/, '').trim();
   } catch {
     return '';
   }
