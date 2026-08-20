@@ -1030,7 +1030,7 @@
       <button class="btn btn-outline" onclick="closeReportModal()">닫기</button>
       <button class="btn btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="openSpendFromReport()">+ 차감 추가</button>
       <button class="btn btn-accent" onclick="copyReportImage()">📋 이미지 복사</button>
-      <button class="btn btn-outline" onclick="copyReportOrderablePromos()" style="border-color:#059669;color:#059669">🎁 주문 가능 판촉물 복사</button>
+      <button class="btn btn-outline" onclick="copyPromoListImage()" style="border-color:#059669;color:#059669">🎁 판촉물 목록 이미지 복사</button>
     </div>
   </div>
 </div>
@@ -4137,21 +4137,6 @@ async function copyReportImage() {
   }
 }
 
-function copyReportOrderablePromos() {
-  const d = getReportData();
-  if (!d) return;
-  const availableBalance = Math.max(0, d.balance || 0);
-  const orderable = promoItems
-    .filter(item => (Number(item.price) || 0) > 0 && (Number(item.price) || 0) <= availableBalance)
-    .sort((a, b) => (a.category || '').localeCompare(b.category || '') || a.name.localeCompare(b.name));
-  if (!orderable.length) return alert('현재 잔액으로 주문 가능한 판촉물이 없습니다.');
-  const txt = `🎁 ${d.c.name} 주문 가능 판촉물\n현재 사용 가능 마일리지: ${fmt(availableBalance)}\n\n` + orderable
-    .map(item => `· ${item.name} | ${fmt(item.price)} | 최대 ${Math.floor(availableBalance / item.price)}개`)
-    .join('\n');
-  navigator.clipboard.writeText(txt)
-    .then(() => alert('✅ 주문 가능한 판촉물 목록이 복사되었습니다.\n카톡 채팅창에 붙여넣기 하세요.'))
-    .catch(() => alert('복사에 실패했습니다.'));
-}
 
 // ===== EXPORT / IMPORT =====
 function exportData() {
