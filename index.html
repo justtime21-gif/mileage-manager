@@ -419,7 +419,7 @@
             <div class="form-group">
               <label>거래선 선택</label>
               <div style="display:flex;gap:8px">
-                <select id="rx-clinic" onchange="updateRxRate();showPrevRxBtn();renderRxLastReport()" style="flex:1">
+                <select id="rx-clinic" onchange="onRxClinicChange()" style="flex:1">
                   <option value="">거래선을 선택하세요</option>
                 </select>
                 <button class="btn btn-outline" style="white-space:nowrap" onclick="openClinicModalFromRx()">+ 신규 등록</button>
@@ -2195,8 +2195,7 @@ function openMileageClinic(clinicId) {
   setTimeout(() => {
     const select = document.getElementById('rx-clinic');
     select.value = clinicId;
-    updateRxRate();
-    showPrevRxBtn();
+    onRxClinicChange();
   }, 0);
 }
 
@@ -2489,7 +2488,7 @@ function saveClinic() {
     clinicModalFromRx = false;
     renderRxClinicSelect();
     document.getElementById('rx-clinic').value = savedId;
-    updateRxRate();
+    onRxClinicChange();
   }
 }
 
@@ -2555,6 +2554,14 @@ function renderRxClinicSelect() {
   if (!document.getElementById('rx-start').value) setDefaultRxPeriod();
   if (!rxItems.length) { rxItems = []; addRxItem(); addRxItem(); addRxItem(); }
   renderRxItemRows();
+}
+
+// 처방 입력 화면의 거래선이 바뀔 때 함께 갱신해야 하는 것들. 드롭다운 onchange와
+// 코드로 값을 바꾸는 경로(대시보드 진입·신규 등록) 모두 이 함수를 거친다.
+function onRxClinicChange() {
+  updateRxRate();
+  showPrevRxBtn();
+  renderRxLastReport();
 }
 
 function updateRxRate() {
