@@ -1093,6 +1093,11 @@
       <label>상세 정보 (한 줄에 「항목: 값」)</label>
       <textarea id="pm-spec" rows="5" placeholder="판매단위: 250매/1갑 x 24&#10;브랜드: OSSTEM IMPLANT&#10;상품코드: 16016907"></textarea>
     </div>
+    <div class="form-group">
+      <label>상품 이미지</label>
+      <input type="file" id="pm-img-input" accept="image/*" onchange="setPromoImage(this.files[0]); this.value=''">
+      <div id="pm-img-preview" style="margin-top:8px"></div>
+    </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closePromoModal()">취소</button>
       <button class="btn btn-primary" onclick="savePromoItem()">저장</button>
@@ -3704,6 +3709,39 @@ const PROMO_MALL_INFO = {
   },
 };
 
+// 상품 이미지: 최대 600px JPEG data URI로 줄여 localStorage 용량을 아낀다.
+let pendingPromoImg = '';
+
+function setPromoImage(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, 600 / img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      pendingPromoImg = canvas.toDataURL('image/jpeg', 0.8);
+      renderPromoImgPreview();
+    };
+    img.onerror = () => alert('이미지를 읽지 못했습니다.');
+    img.src = reader.result;
+  };
+  reader.onerror = () => alert('이미지를 읽지 못했습니다.');
+  reader.readAsDataURL(file);
+}
+
+function clearPromoImage() { pendingPromoImg = ''; renderPromoImgPreview(); }
+
+function renderPromoImgPreview() {
+  document.getElementById('pm-img-preview').innerHTML = pendingPromoImg
+    ? `<img src="${pendingPromoImg}" style="max-width:160px;border:1px solid var(--gray-200);border-radius:8px">
+       <button class="btn btn-outline btn-sm" style="margin-left:8px;color:var(--danger)" onclick="clearPromoImage()">이미지 삭제</button>`
+    : '';
+}
+
 function showPromoDetail(id) {
   const p = promoItems.find(x => x.id === id);
   if (!p) return;
@@ -3723,6 +3761,7 @@ function showPromoDetail(id) {
 
   document.getElementById('promo-detail-title').textContent = p.name;
   document.getElementById('promo-detail-body').innerHTML = `
+    ${p.img ? `<img src="${p.img}" alt="${escapeHtml(p.name)}" style="width:100%;max-height:260px;object-fit:contain;border:1px solid var(--gray-200);border-radius:8px;margin-bottom:14px">` : ''}
     <div style="font-size:13px;color:var(--gray-500);margin-bottom:14px">${fmt(p.price)} · ${escapeHtml(p.category || '분류 없음')}</div>
     ${rows
       ? `<table style="width:100%;border-collapse:collapse;font-size:14px;border:1px solid var(--gray-200);border-radius:8px;overflow:hidden">${rows}</table>`
@@ -3759,9 +3798,12 @@ function openPromoModal(id = null) {
     document.getElementById('pm-category').value = p.category || '';
     document.getElementById('pm-url').value = p.mallUrl || PROMO_MALL_INFO[p.name]?.url || '';
     document.getElementById('pm-spec').value = p.spec || PROMO_MALL_INFO[p.name]?.spec || '';
+    pendingPromoImg = p.img || '';
   } else {
     ['pm-name','pm-price','pm-category','pm-url','pm-spec'].forEach(k => document.getElementById(k).value = '');
+    pendingPromoImg = '';
   }
+  renderPromoImgPreview();
   document.getElementById('promo-modal').classList.add('open');
 }
 
@@ -3778,9 +3820,9 @@ function savePromoItem() {
   if (mallUrl && !/^https?:\/\//i.test(mallUrl)) return alert('링크는 http:// 또는 https:// 로 시작해야 합니다.');
   if (editingPromoId) {
     const p = promoItems.find(x => x.id === editingPromoId);
-    Object.assign(p, { name, price, category, mallUrl, spec });
+    Object.assign(p, { name, price, category, mallUrl, spec, img: pendingPromoImg });
   } else {
-    promoItems.push({ id: uid(), name, price, category, mallUrl, spec });
+    promoItems.push({ id: uid(), name, price, category, mallUrl, spec, img: pendingPromoImg });
   }
   save();
   closePromoModal();
