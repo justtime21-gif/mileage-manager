@@ -1633,7 +1633,24 @@ function getClinicTotalRx(clinicId) {
     .reduce((s, t) => s + (t.rxTotal || 0), 0);
 }
 
-// ===== 삭제 확인 모달 (2단계 확인) =====
+// 거래처 하나의 적립·차감을 한 줄씩 합쳐 최신순으로 돌려준다. 요약 탭이 쓴다.
+// txs는 테스트에서 주입하기 위한 것 — 앱에서는 전역 transactions를 쓴다.
+function buildClinicTimeline(clinicId, txs) {
+  const source = txs || transactions;
+  return source
+    .filter(t => t.clinicId === clinicId)
+    .map(t => ({
+      id: t.id,
+      kind: t.type,
+      date: t.date || '',
+      amount: t.amount || 0,
+      createdAt: t.createdAt || 0,
+      desc: t.type === 'earn'
+        ? `${txPeriod(t)} 처방 · 적립률 ${t.rate}%`
+        : (t.items || []).map(i => `${i.name} × ${i.qty || 1}개`).join(', ') || '-',
+    }))
+    .sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0));
+}
 let pendingDelete = null;
 
 function requestDelete({ desc, requireText, onConfirm }) {
