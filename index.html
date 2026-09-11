@@ -412,7 +412,7 @@
         </div>
         <button class="btn btn-outline" onclick="navigate('history')">이력 조회</button>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div id="rx-workarea" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div class="card">
           <div class="card-title">처방 정보 입력</div>
           <div class="form-row" style="grid-template-columns:1fr">
@@ -527,7 +527,7 @@
         <div><h2>판촉물 차감</h2><p>마일리지로 판촉물을 구매하고 잔액을 차감합니다</p></div>
         <button class="btn btn-outline" onclick="navigate('promo-track')">발송 현황</button>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div id="redeem-workarea" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div class="card">
           <div class="card-title">차감 정보 입력</div>
           <div class="form-group" style="margin-bottom:16px">
@@ -1006,7 +1006,7 @@
 
 <!-- Report Modal -->
 <div class="modal-overlay" id="report-modal">
-  <div class="modal" style="max-width:720px">
+  <div class="modal" id="report-workarea" style="max-width:720px">
     <h3>📊 적립 현황 보고서 (카톡 전송용)</h3>
     <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:12px;margin-bottom:16px;align-items:end">
       <div class="form-group">
@@ -1701,8 +1701,63 @@ function executeDelete() {
   fn();
 }
 
+// ===== 거래처 허브: 폼 노드 이동 =====
+// 처방·차감·보고서 폼은 전역 DOM id를 쓰기 때문에 복제하면 id가 겹쳐 양쪽 다 깨진다.
+// 그래서 인스턴스를 하나만 두고, 탭을 열 때 그 노드를 패널로 옮겼다가 되돌린다.
+const HUB_TABS = {
+  rx:     { workarea: 'rx-workarea',     select: 'rx-clinic',     onMount: () => { renderRxClinicSelect(); onRxClinicChange(); } },
+  redeem: { workarea: 'redeem-workarea', select: 'redeem-clinic', onMount: () => { renderRedeemClinicSelect(); renderRedeemPromoGrid(); updateRedeemBalance(); } },
+  report: { workarea: 'report-workarea', select: 'report-clinic', onMount: () => renderReport() },
+};
+
+// 옮긴 노드의 원래 자리: { workareaId: {parent, nextSibling, hiddenRow} }
+const hubMoved = {};
+
+function mountTab(tabName, clinicId) {
+  const conf = HUB_TABS[tabName];
+  if (!conf) return;
+  const node = document.getElementById(conf.workarea);
+  const body = document.getElementById('hub-tab-body');
+  if (!node || !body) return;
+
+  // 앞서 옮겨둔 노드가 이 본문 안에 있으면 innerHTML을 비우는 순간 그 노드를 잃는다.
+  // 비우기 전에 반드시 제자리로 돌려놓는다.
+  restoreTabs();
+
+  if (!hubMoved[conf.workarea]) {
+    hubMoved[conf.workarea] = { parent: node.parentNode, nextSibling: node.nextSibling, hiddenRow: null };
+  }
+  body.innerHTML = '';
+  body.appendChild(node);
+
+  // 거래처는 이미 정해져 있으므로 select 줄은 숨기고 값만 맞춘다.
+  const sel = document.getElementById(conf.select);
+  if (sel) {
+    if (conf.select === 'report-clinic') {
+      sel.innerHTML = clinicsSortedByBalance().map(c => `<option value="${c.id}">${clinicLabel(c)}</option>`).join('');
+    }
+    conf.onMount();
+    sel.value = clinicId;
+    sel.dispatchEvent(new Event('change'));
+    const row = sel.closest('.form-group');
+    if (row) { row.style.display = 'none'; hubMoved[conf.workarea].hiddenRow = row; }
+  } else {
+    conf.onMount();
+  }
+}
+
+function restoreTabs() {
+  Object.entries(hubMoved).forEach(([id, at]) => {
+    const node = document.getElementById(id);
+    if (node && at.parent) at.parent.insertBefore(node, at.nextSibling);
+    if (at.hiddenRow) at.hiddenRow.style.display = '';
+    delete hubMoved[id];
+  });
+}
+
 // ===== NAVIGATION =====
 function navigate(page) {
+  if (page !== 'clinic-hub') restoreTabs();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
