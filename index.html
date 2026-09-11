@@ -50,6 +50,17 @@
   .page-header h2 { font-size: 22px; font-weight: 700; }
   .page-header p { color: var(--gray-500); font-size: 13px; margin-top: 4px; }
 
+  /* 거래처 허브: 탭 본문(요약/처방/차감/보고서) 전환 — el.style.display로 토글하면
+     workarea-2col의 인라인 grid가 풀리므로 클래스로만 전환한다 */
+  .hub-pane { display: none; }
+  .hub-pane.active { display: block; }
+  .hub-pane.active.workarea-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .hub-tab-btn {
+    padding: 8px 14px; border: none; background: none; cursor: pointer;
+    font-weight: 600; font-size: 14px; color: var(--gray-500); border-bottom: 2px solid transparent;
+  }
+  .hub-tab-btn.active { color: var(--primary-dark); border-bottom-color: var(--primary); }
+
   /* Cards */
   .card {
     background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
@@ -346,7 +357,202 @@
           </select>
           <div id="hub-clinic-list" style="max-height:70vh;overflow-y:auto"></div>
         </div>
-        <div id="hub-panel" class="card"></div>
+        <div id="hub-panel" class="card">
+          <div id="hub-panel-empty" class="text-sm" style="color:var(--gray-400)">왼쪽에서 거래처를 선택하세요.</div>
+          <div id="hub-panel-head" style="display:none"></div>
+          <div id="hub-tab-body" style="display:none">
+            <div id="hub-pane-summary" class="hub-pane"></div>
+            <div id="rx-workarea" class="hub-pane workarea-2col">
+              <div class="card">
+                <div class="card-title">처방 정보 입력</div>
+                <div class="form-row" style="grid-template-columns:1fr">
+                  <div class="form-group">
+                    <div style="display:flex;gap:8px;align-items:flex-end">
+                      <div id="rx-clinic-row" style="display:none;flex:1">
+                        <label>거래선 선택</label>
+                        <select id="rx-clinic" onchange="onRxClinicChange()" style="width:100%">
+                          <option value="">거래선을 선택하세요</option>
+                        </select>
+                      </div>
+                      <button class="btn btn-outline" style="white-space:nowrap" onclick="openClinicModalFromRx()">+ 신규 등록</button>
+                    </div>
+                    <div id="prev-rx-bar" style="display:none;margin-top:8px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;display:none;align-items:center;justify-content:space-between;gap:8px">
+                      <span id="prev-rx-label" style="font-size:13px;color:#166534"></span>
+                      <button class="btn btn-sm" onclick="loadPrevRx()" style="background:#16a34a;color:white;white-space:nowrap;flex-shrink:0">이전 처방 불러오기</button>
+                    </div>
+                    <button id="crm-rx-btn" class="btn btn-outline btn-sm" style="margin-top:8px;width:100%" onclick="loadRxFromCrm()">
+                      📥 CRM에서 처방량 불러오기
+                    </button>
+                    <div id="crm-rx-status" style="margin-top:6px;font-size:13px"></div>
+                  </div>
+                </div>
+                <div class="form-row" style="grid-template-columns:1fr 1fr">
+                  <div class="form-group">
+                    <label>처방 기간</label>
+                    <div style="display:flex;gap:6px;align-items:center">
+                      <input type="date" id="rx-start" onchange="autoSetRxEnd()" style="flex:1;padding:8px 10px;border:1px solid var(--gray-300);border-radius:8px;font-size:13px;outline:none">
+                      <span style="color:var(--gray-500)">~</span>
+                      <input type="date" id="rx-end" style="flex:1;padding:8px 10px;border:1px solid var(--gray-300);border-radius:8px;font-size:13px;outline:none">
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label>적립률 (%)</label>
+                    <input type="number" id="rx-rate" min="0" max="100" step="0.1" value="10" oninput="calcRxTotal()">
+                  </div>
+                </div>
+
+                <div style="margin-bottom:16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px">
+                  <div class="flex justify-between items-center" style="margin-bottom:8px">
+                    <span style="font-size:13px;font-weight:700;color:#1e40af">📷 통계 사진 인식</span>
+                    <div style="display:flex;gap:6px">
+                      <button class="btn btn-sm" style="background:#3b82f6;color:white;font-weight:600" onclick="document.getElementById('stats-photo-input').click()">사진 선택</button>
+                      <button class="btn btn-sm" style="background:#1e40af;color:white;font-weight:600" id="ocr-run-btn" onclick="runStatsOcr()" disabled>🔍 인식 실행</button>
+                    </div>
+                  </div>
+                  <input type="file" id="stats-photo-input" accept="image/*" multiple style="display:none" onchange="addStatsPhotos(this.files); this.value=''">
+                  <div class="text-sm" style="color:#1e40af">원외처방 통계 사진을 선택하거나 캡처 후 붙여넣기(Cmd+V) 하세요. <strong>두 장 이상이면 모두 추가</strong>하면 한 번에 인식됩니다. 통계 연월(처방 기간)도 자동으로 인식합니다.</div>
+                  <div id="stats-photo-preview-wrap" style="display:none;margin-top:10px;gap:8px;flex-wrap:wrap"></div>
+                  <div id="ocr-status" style="font-size:12px;margin-top:6px"></div>
+                </div>
+
+                <div style="margin-bottom:16px">
+                  <div class="flex justify-between items-center" style="margin-bottom:8px">
+                    <span style="font-size:13px;font-weight:600;color:var(--gray-700)">처방 품목</span>
+                    <button class="btn btn-outline btn-sm" onclick="addRxItem()">+ 품목 추가</button>
+                  </div>
+                  <div class="rx-items-header">
+                    <span>약품 선택</span><span>처방량</span><span>단가(원)</span><span>금액(원)</span><span></span>
+                  </div>
+                  <div id="rx-items-list"></div>
+                  <div class="rx-total">
+                    <div>
+                      <div class="rx-total-label">처방액 합계</div>
+                      <div class="text-sm" id="rx-mileage-preview">마일리지: 0원</div>
+                    </div>
+                    <div class="rx-total-value" id="rx-total-display">0원</div>
+                  </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:16px">
+                  <label>메모 (선택)</label>
+                  <textarea id="rx-memo" rows="2" style="resize:vertical;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:13px;font-family:inherit;outline:none" placeholder="특이사항 등"></textarea>
+                </div>
+
+                <div class="form-actions">
+                  <button class="btn btn-outline" onclick="clearRxForm()">초기화</button>
+                  <button class="btn btn-primary" onclick="saveRx()">💾 저장 및 적립</button>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-title flex justify-between items-center">
+                  <span>마지막 보고서</span>
+                  <button class="btn btn-outline btn-sm" id="rx-report-open-btn" style="display:none" onclick="showHubTab('report')">보고서 열기</button>
+                </div>
+                <div id="rx-report-meta" class="text-sm" style="margin-bottom:10px;color:var(--gray-500)">거래선을 선택하면 마지막으로 보낸 보고서가 표시됩니다.</div>
+                <div id="rx-report-wrap" style="display:none;border:1px solid var(--gray-200);border-radius:8px;overflow:hidden;background:white">
+                  <canvas id="rx-report-canvas" style="width:100%;display:block"></canvas>
+                </div>
+              </div>
+            </div>
+            <div id="redeem-workarea" class="hub-pane workarea-2col">
+              <div class="card">
+                <div class="card-title">차감 정보 입력</div>
+                <div class="form-group" style="display:none">
+                  <label>거래선 선택</label>
+                  <select id="redeem-clinic" onchange="updateRedeemBalance()">
+                    <option value="">거래선을 선택하세요</option>
+                  </select>
+                </div>
+                <div id="redeem-balance-info" style="margin-bottom:16px;display:none">
+                  <div class="alert alert-info">
+                    <div style="font-weight:600;margin-bottom:4px" id="redeem-clinic-name">-</div>
+                    <div>현재 잔액: <strong id="redeem-balance-display" style="font-size:16px">0원</strong></div>
+                  </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:16px">
+                  <label>차감 날짜</label>
+                  <input type="date" id="redeem-date">
+                </div>
+
+                <div style="margin-bottom:16px;background:#fef9e7;border:1px solid #f6e05e;border-radius:10px;padding:14px">
+                  <div class="flex justify-between items-center" style="margin-bottom:8px">
+                    <span style="font-size:13px;font-weight:700;color:#975a16">💬 카톡 주문 자동 인식</span>
+                    <button class="btn btn-sm" style="background:#ecc94b;color:#5f370e;font-weight:600" onclick="parseKakaoOrder()">자동 인식</button>
+                  </div>
+                  <textarea id="kakao-order-text" rows="3" placeholder="카톡 주문 내용을 그대로 붙여넣으세요&#10;예) 핸드페이퍼 타월 2개, PDRN 2개&#10;     리도카글액 6개 부탁드려요" style="width:100%;resize:vertical;padding:8px 10px;border:1px solid #f6e05e;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:white"></textarea>
+                  <div id="kakao-parse-result" style="font-size:12px;margin-top:6px"></div>
+                </div>
+
+                <div style="margin-bottom:16px">
+                  <div class="flex justify-between items-center" style="margin-bottom:12px">
+                    <span style="font-size:13px;font-weight:600;color:var(--gray-700)">판촉물 선택</span>
+                    <span class="text-sm">클릭하여 선택 (복수 선택 가능)</span>
+                  </div>
+                  <div class="promo-grid" id="redeem-promo-grid"></div>
+                </div>
+
+                <div style="margin-bottom:16px" id="redeem-custom-items">
+                  <div class="flex justify-between items-center" style="margin-bottom:8px">
+                    <span style="font-size:13px;font-weight:600;color:var(--gray-700)">직접 입력</span>
+                    <button class="btn btn-outline btn-sm" onclick="addRedeemCustomItem()">+ 항목 추가</button>
+                  </div>
+                  <div id="redeem-custom-list"></div>
+                </div>
+
+                <div class="rx-total" style="margin-bottom:16px">
+                  <div>
+                    <div class="rx-total-label">차감 총액</div>
+                    <div class="text-sm" id="redeem-after-balance">차감 후 잔액: -</div>
+                  </div>
+                  <div class="rx-total-value" id="redeem-total-display">0원</div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:16px">
+                  <label>메모</label>
+                  <input type="text" id="redeem-memo" placeholder="예: 2월 판촉물 전달">
+                </div>
+
+                <div class="form-actions">
+                  <button class="btn btn-outline" onclick="clearRedeemForm()">초기화</button>
+                  <button class="btn btn-danger" onclick="saveRedeem()">💳 마일리지 차감</button>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-title">차감 이력</div>
+                <div id="redeem-history-list"></div>
+              </div>
+            </div>
+            <div id="report-workarea" class="hub-pane card">
+              <h3>📊 적립 현황 보고서 (카톡 전송용)</h3>
+              <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:12px;margin-bottom:16px;align-items:end">
+                <div class="form-group" style="display:none">
+                  <label>거래선</label>
+                  <select id="report-clinic" onchange="renderReport()"></select>
+                </div>
+                <div class="form-group">
+                  <label>기간 시작</label>
+                  <input type="date" id="report-period-start">
+                </div>
+                <div class="form-group">
+                  <label>기간 종료</label>
+                  <input type="date" id="report-period-end">
+                </div>
+                <button class="btn btn-outline" onclick="saveReportPeriod()">기간 저장</button>
+              </div>
+              <div style="border:1px solid var(--gray-200);border-radius:8px;overflow:hidden;background:white">
+                <canvas id="report-canvas" style="width:100%;display:block"></canvas>
+              </div>
+              <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
+                <button class="btn btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="openSpendFromReport()">+ 차감 추가</button>
+                <button class="btn btn-accent" onclick="copyReportImage()">📋 이미지 복사</button>
+                <button class="btn btn-outline" onclick="copyPromoListImage()" style="border-color:#059669;color:#059669">🎁 판촉물 목록 이미지 복사</button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -432,97 +638,6 @@
         </div>
         <button class="btn btn-outline" onclick="navigate('history')">이력 조회</button>
       </div>
-      <div id="rx-workarea" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-        <div class="card">
-          <div class="card-title">처방 정보 입력</div>
-          <div class="form-row" style="grid-template-columns:1fr">
-            <div class="form-group">
-              <label>거래선 선택</label>
-              <div style="display:flex;gap:8px">
-                <select id="rx-clinic" onchange="onRxClinicChange()" style="flex:1">
-                  <option value="">거래선을 선택하세요</option>
-                </select>
-                <button class="btn btn-outline" style="white-space:nowrap" onclick="openClinicModalFromRx()">+ 신규 등록</button>
-              </div>
-              <div id="prev-rx-bar" style="display:none;margin-top:8px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;display:none;align-items:center;justify-content:space-between;gap:8px">
-                <span id="prev-rx-label" style="font-size:13px;color:#166534"></span>
-                <button class="btn btn-sm" onclick="loadPrevRx()" style="background:#16a34a;color:white;white-space:nowrap;flex-shrink:0">이전 처방 불러오기</button>
-              </div>
-              <button id="crm-rx-btn" class="btn btn-outline btn-sm" style="margin-top:8px;width:100%" onclick="loadRxFromCrm()">
-                📥 CRM에서 처방량 불러오기
-              </button>
-              <div id="crm-rx-status" style="margin-top:6px;font-size:13px"></div>
-            </div>
-          </div>
-          <div class="form-row" style="grid-template-columns:1fr 1fr">
-            <div class="form-group">
-              <label>처방 기간</label>
-              <div style="display:flex;gap:6px;align-items:center">
-                <input type="date" id="rx-start" onchange="autoSetRxEnd()" style="flex:1;padding:8px 10px;border:1px solid var(--gray-300);border-radius:8px;font-size:13px;outline:none">
-                <span style="color:var(--gray-500)">~</span>
-                <input type="date" id="rx-end" style="flex:1;padding:8px 10px;border:1px solid var(--gray-300);border-radius:8px;font-size:13px;outline:none">
-              </div>
-            </div>
-            <div class="form-group">
-              <label>적립률 (%)</label>
-              <input type="number" id="rx-rate" min="0" max="100" step="0.1" value="10" oninput="calcRxTotal()">
-            </div>
-          </div>
-
-          <div style="margin-bottom:16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px">
-            <div class="flex justify-between items-center" style="margin-bottom:8px">
-              <span style="font-size:13px;font-weight:700;color:#1e40af">📷 통계 사진 인식</span>
-              <div style="display:flex;gap:6px">
-                <button class="btn btn-sm" style="background:#3b82f6;color:white;font-weight:600" onclick="document.getElementById('stats-photo-input').click()">사진 선택</button>
-                <button class="btn btn-sm" style="background:#1e40af;color:white;font-weight:600" id="ocr-run-btn" onclick="runStatsOcr()" disabled>🔍 인식 실행</button>
-              </div>
-            </div>
-            <input type="file" id="stats-photo-input" accept="image/*" multiple style="display:none" onchange="addStatsPhotos(this.files); this.value=''">
-            <div class="text-sm" style="color:#1e40af">원외처방 통계 사진을 선택하거나 캡처 후 붙여넣기(Cmd+V) 하세요. <strong>두 장 이상이면 모두 추가</strong>하면 한 번에 인식됩니다. 통계 연월(처방 기간)도 자동으로 인식합니다.</div>
-            <div id="stats-photo-preview-wrap" style="display:none;margin-top:10px;gap:8px;flex-wrap:wrap"></div>
-            <div id="ocr-status" style="font-size:12px;margin-top:6px"></div>
-          </div>
-
-          <div style="margin-bottom:16px">
-            <div class="flex justify-between items-center" style="margin-bottom:8px">
-              <span style="font-size:13px;font-weight:600;color:var(--gray-700)">처방 품목</span>
-              <button class="btn btn-outline btn-sm" onclick="addRxItem()">+ 품목 추가</button>
-            </div>
-            <div class="rx-items-header">
-              <span>약품 선택</span><span>처방량</span><span>단가(원)</span><span>금액(원)</span><span></span>
-            </div>
-            <div id="rx-items-list"></div>
-            <div class="rx-total">
-              <div>
-                <div class="rx-total-label">처방액 합계</div>
-                <div class="text-sm" id="rx-mileage-preview">마일리지: 0원</div>
-              </div>
-              <div class="rx-total-value" id="rx-total-display">0원</div>
-            </div>
-          </div>
-
-          <div class="form-group" style="margin-bottom:16px">
-            <label>메모 (선택)</label>
-            <textarea id="rx-memo" rows="2" style="resize:vertical;padding:8px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:13px;font-family:inherit;outline:none" placeholder="특이사항 등"></textarea>
-          </div>
-
-          <div class="form-actions">
-            <button class="btn btn-outline" onclick="clearRxForm()">초기화</button>
-            <button class="btn btn-primary" onclick="saveRx()">💾 저장 및 적립</button>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-title flex justify-between items-center">
-            <span>마지막 보고서</span>
-            <button class="btn btn-outline btn-sm" id="rx-report-open-btn" style="display:none" onclick="openReportModal(document.getElementById('rx-clinic').value)">보고서 열기</button>
-          </div>
-          <div id="rx-report-meta" class="text-sm" style="margin-bottom:10px;color:var(--gray-500)">거래선을 선택하면 마지막으로 보낸 보고서가 표시됩니다.</div>
-          <div id="rx-report-wrap" style="display:none;border:1px solid var(--gray-200);border-radius:8px;overflow:hidden;background:white">
-            <canvas id="rx-report-canvas" style="width:100%;display:block"></canvas>
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- 처방 이력 -->
@@ -546,76 +661,6 @@
       <div class="page-header flex justify-between items-center">
         <div><h2>판촉물 차감</h2><p>마일리지로 판촉물을 구매하고 잔액을 차감합니다</p></div>
         <button class="btn btn-outline" onclick="navigate('promo-track')">발송 현황</button>
-      </div>
-      <div id="redeem-workarea" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-        <div class="card">
-          <div class="card-title">차감 정보 입력</div>
-          <div class="form-group" style="margin-bottom:16px">
-            <label>거래선 선택</label>
-            <select id="redeem-clinic" onchange="updateRedeemBalance()">
-              <option value="">거래선을 선택하세요</option>
-            </select>
-          </div>
-          <div id="redeem-balance-info" style="margin-bottom:16px;display:none">
-            <div class="alert alert-info">
-              <div style="font-weight:600;margin-bottom:4px" id="redeem-clinic-name">-</div>
-              <div>현재 잔액: <strong id="redeem-balance-display" style="font-size:16px">0원</strong></div>
-            </div>
-          </div>
-
-          <div class="form-group" style="margin-bottom:16px">
-            <label>차감 날짜</label>
-            <input type="date" id="redeem-date">
-          </div>
-
-          <div style="margin-bottom:16px;background:#fef9e7;border:1px solid #f6e05e;border-radius:10px;padding:14px">
-            <div class="flex justify-between items-center" style="margin-bottom:8px">
-              <span style="font-size:13px;font-weight:700;color:#975a16">💬 카톡 주문 자동 인식</span>
-              <button class="btn btn-sm" style="background:#ecc94b;color:#5f370e;font-weight:600" onclick="parseKakaoOrder()">자동 인식</button>
-            </div>
-            <textarea id="kakao-order-text" rows="3" placeholder="카톡 주문 내용을 그대로 붙여넣으세요&#10;예) 핸드페이퍼 타월 2개, PDRN 2개&#10;     리도카글액 6개 부탁드려요" style="width:100%;resize:vertical;padding:8px 10px;border:1px solid #f6e05e;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:white"></textarea>
-            <div id="kakao-parse-result" style="font-size:12px;margin-top:6px"></div>
-          </div>
-
-          <div style="margin-bottom:16px">
-            <div class="flex justify-between items-center" style="margin-bottom:12px">
-              <span style="font-size:13px;font-weight:600;color:var(--gray-700)">판촉물 선택</span>
-              <span class="text-sm">클릭하여 선택 (복수 선택 가능)</span>
-            </div>
-            <div class="promo-grid" id="redeem-promo-grid"></div>
-          </div>
-
-          <div style="margin-bottom:16px" id="redeem-custom-items">
-            <div class="flex justify-between items-center" style="margin-bottom:8px">
-              <span style="font-size:13px;font-weight:600;color:var(--gray-700)">직접 입력</span>
-              <button class="btn btn-outline btn-sm" onclick="addRedeemCustomItem()">+ 항목 추가</button>
-            </div>
-            <div id="redeem-custom-list"></div>
-          </div>
-
-          <div class="rx-total" style="margin-bottom:16px">
-            <div>
-              <div class="rx-total-label">차감 총액</div>
-              <div class="text-sm" id="redeem-after-balance">차감 후 잔액: -</div>
-            </div>
-            <div class="rx-total-value" id="redeem-total-display">0원</div>
-          </div>
-
-          <div class="form-group" style="margin-bottom:16px">
-            <label>메모</label>
-            <input type="text" id="redeem-memo" placeholder="예: 2월 판촉물 전달">
-          </div>
-
-          <div class="form-actions">
-            <button class="btn btn-outline" onclick="clearRedeemForm()">초기화</button>
-            <button class="btn btn-danger" onclick="saveRedeem()">💳 마일리지 차감</button>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">차감 이력</div>
-          <div id="redeem-history-list"></div>
-        </div>
       </div>
     </div>
 
@@ -1020,37 +1065,6 @@
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="document.getElementById('import-modal').classList.remove('open')">취소</button>
       <button class="btn btn-primary" onclick="importData()">가져오기</button>
-    </div>
-  </div>
-</div>
-
-<!-- Report Modal -->
-<div class="modal-overlay" id="report-modal">
-  <div class="modal" id="report-workarea" style="max-width:720px">
-    <h3>📊 적립 현황 보고서 (카톡 전송용)</h3>
-    <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:12px;margin-bottom:16px;align-items:end">
-      <div class="form-group">
-        <label>거래선</label>
-        <select id="report-clinic" onchange="renderReport()"></select>
-      </div>
-      <div class="form-group">
-        <label>기간 시작</label>
-        <input type="date" id="report-period-start">
-      </div>
-      <div class="form-group">
-        <label>기간 종료</label>
-        <input type="date" id="report-period-end">
-      </div>
-      <button class="btn btn-outline" onclick="saveReportPeriod()">기간 저장</button>
-    </div>
-    <div style="border:1px solid var(--gray-200);border-radius:8px;overflow:hidden;background:white">
-      <canvas id="report-canvas" style="width:100%;display:block"></canvas>
-    </div>
-    <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
-      <button class="btn btn-outline" onclick="closeReportModal()">닫기</button>
-      <button class="btn btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="openSpendFromReport()">+ 차감 추가</button>
-      <button class="btn btn-accent" onclick="copyReportImage()">📋 이미지 복사</button>
-      <button class="btn btn-outline" onclick="copyPromoListImage()" style="border-color:#059669;color:#059669">🎁 판촉물 목록 이미지 복사</button>
     </div>
   </div>
 </div>
@@ -1721,61 +1735,16 @@ function executeDelete() {
   fn();
 }
 
-// ===== 거래처 허브: 폼 노드 이동 =====
+// ===== 거래처 허브 =====
 // 처방·차감·보고서 폼은 전역 DOM id를 쓰기 때문에 복제하면 id가 겹쳐 양쪽 다 깨진다.
-// 그래서 인스턴스를 하나만 두고, 탭을 열 때 그 노드를 패널로 옮겼다가 되돌린다.
+// 그래서 인스턴스를 하나만 두고 #hub-tab-body 안에 영구히 둔다. 탭 전환은 클래스
+// 토글(.hub-pane.active)만 하고, 보이는 탭의 select 값을 현재 거래처로 맞춘다.
 const HUB_TABS = {
   rx:     { workarea: 'rx-workarea',     select: 'rx-clinic',     onMount: () => { renderRxClinicSelect(); onRxClinicChange(); } },
   redeem: { workarea: 'redeem-workarea', select: 'redeem-clinic', onMount: () => { renderRedeemClinicSelect(); renderRedeemPromoGrid(); updateRedeemBalance(); } },
   report: { workarea: 'report-workarea', select: 'report-clinic', onMount: () => renderReport() },
 };
 
-// 옮긴 노드의 원래 자리: { workareaId: {parent, nextSibling, hiddenRow} }
-const hubMoved = {};
-
-function mountTab(tabName, clinicId) {
-  const conf = HUB_TABS[tabName];
-  if (!conf) return;
-  const node = document.getElementById(conf.workarea);
-  const body = document.getElementById('hub-tab-body');
-  if (!node || !body) return;
-
-  // 앞서 옮겨둔 노드가 이 본문 안에 있으면 innerHTML을 비우는 순간 그 노드를 잃는다.
-  // 비우기 전에 반드시 제자리로 돌려놓는다.
-  restoreTabs();
-
-  if (!hubMoved[conf.workarea]) {
-    hubMoved[conf.workarea] = { parent: node.parentNode, nextSibling: node.nextSibling, hiddenRow: null };
-  }
-  body.innerHTML = '';
-  body.appendChild(node);
-
-  // 거래처는 이미 정해져 있으므로 select 줄은 숨기고 값만 맞춘다.
-  const sel = document.getElementById(conf.select);
-  if (sel) {
-    if (conf.select === 'report-clinic') {
-      sel.innerHTML = clinicsSortedByBalance().map(c => `<option value="${c.id}">${clinicLabel(c)}</option>`).join('');
-    }
-    conf.onMount();
-    sel.value = clinicId;
-    sel.dispatchEvent(new Event('change'));
-    const row = sel.closest('.form-group');
-    if (row) { row.style.display = 'none'; hubMoved[conf.workarea].hiddenRow = row; }
-  } else {
-    conf.onMount();
-  }
-}
-
-function restoreTabs() {
-  Object.entries(hubMoved).forEach(([id, at]) => {
-    const node = document.getElementById(id);
-    if (node && at.parent) at.parent.insertBefore(node, at.nextSibling);
-    if (at.hiddenRow) at.hiddenRow.style.display = '';
-    delete hubMoved[id];
-  });
-}
-
-// ===== 거래처 허브 =====
 let hubState = { clinicId: null, tab: 'summary', filter: '', sort: 'name' };
 
 function renderClinicHub() {
@@ -1810,27 +1779,36 @@ function renderClinicList() {
 }
 
 function selectHubClinic(clinicId) {
-  restoreTabs();
   hubState.clinicId = clinicId;
   hubState.tab = 'summary';
   renderClinicList();
   renderClinicPanel(clinicId);
 }
 
+// 헤더(이름·적립률·수정 버튼 + 통계 3칸 + 탭 버튼)만 다시 그린다. 탭 본문의 폼은
+// #hub-tab-body 안에 영구히 살아 있으므로 여기서 건드리지 않는다 — 안 그러면
+// 입력 중이던 처방 품목·선택한 판촉물이 매 렌더마다 날아간다.
 function renderClinicPanel(clinicId) {
-  const root = document.getElementById('hub-panel');
-  if (!root) return;
-  // #hub-tab-body에 옮겨둔 폼 노드(rx/redeem/report-workarea)를 root.innerHTML로 지우기 전에 먼저 제자리로 돌려놓는다 — 안 그러면 DOM에서 사라져 restoreTabs()가 다시 못 찾는다.
-  restoreTabs();
+  const empty = document.getElementById('hub-panel-empty');
+  const head = document.getElementById('hub-panel-head');
+  const body = document.getElementById('hub-tab-body');
+  if (!empty || !head || !body) return;
+
   const c = clinics.find(x => x.id === clinicId);
   if (!c) {
-    root.innerHTML = '<div class="text-sm" style="color:var(--gray-400)">왼쪽에서 거래처를 선택하세요.</div>';
+    empty.style.display = '';
+    head.style.display = 'none';
+    body.style.display = 'none';
     return;
   }
+  empty.style.display = 'none';
+  head.style.display = '';
+  body.style.display = '';
+
   const { earned, spent, balance, initial } = getClinicBalance(c.id);
   const tabs = [['summary', '요약'], ['rx', '처방 입력'], ['redeem', '차감'], ['report', '보고서']];
 
-  root.innerHTML = `
+  head.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:start;gap:12px">
       <div>
         <h2 style="margin:0">${c.name} ${c.branch ? `<span class="text-sm" style="color:var(--gray-500)">[${c.branch}]</span>` : ''}</h2>
@@ -1846,27 +1824,40 @@ function renderClinicPanel(clinicId) {
       <div><div class="text-sm" style="color:var(--gray-500)">차감</div>
         <strong style="font-size:20px;color:var(--danger)">${fmt(spent)}</strong></div>
     </div>
-    <div style="display:flex;gap:4px;border-bottom:1px solid var(--gray-200);margin-bottom:12px">
-      ${tabs.map(([id, label]) => `<button onclick="hubState.tab='${id}'; renderClinicPanel(hubState.clinicId)"
-        style="padding:8px 14px;border:none;background:none;cursor:pointer;font-weight:600;font-size:14px;
-        color:${hubState.tab === id ? 'var(--primary-dark)' : 'var(--gray-500)'};
-        border-bottom:2px solid ${hubState.tab === id ? 'var(--primary)' : 'transparent'}">${label}</button>`).join('')}
-    </div>
-    <div id="hub-tab-body"></div>`;
+    <div style="display:flex;gap:4px;border-bottom:1px solid var(--gray-200)">
+      ${tabs.map(([id, label]) => `<button class="hub-tab-btn${hubState.tab === id ? ' active' : ''}" data-tab="${id}" onclick="showHubTab('${id}')">${label}</button>`).join('')}
+    </div>`;
 
   showHubTab(hubState.tab);
 }
 
+// 탭 전환: 클래스만 토글한다 (헤더는 다시 그리지 않는다). 처방/차감/보고서 탭은
+// select 값을 현재 거래처로 맞추고 onMount()를 불러 데이터를 새로고침한다 —
+// 각 탭의 상태(rxItems, selectedPromoItems 등)는 전역 변수라 다시 그려도 유지된다.
 function showHubTab(tabName) {
   hubState.tab = tabName;
-  const body = document.getElementById('hub-tab-body');
-  if (!body) return;
+  document.querySelectorAll('#hub-tab-body .hub-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('#hub-panel-head .hub-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabName));
 
   if (tabName === 'summary') {
-    body.innerHTML = renderHubSummary(hubState.clinicId);
+    const pane = document.getElementById('hub-pane-summary');
+    pane.innerHTML = renderHubSummary(hubState.clinicId);
+    pane.classList.add('active');
     return;
   }
-  mountTab(tabName, hubState.clinicId);
+
+  const conf = HUB_TABS[tabName];
+  if (!conf) return;
+  document.getElementById(conf.workarea)?.classList.add('active');
+
+  const sel = document.getElementById(conf.select);
+  if (!sel) return;
+  if (conf.select === 'report-clinic') {
+    sel.innerHTML = clinicsSortedByBalance().map(c => `<option value="${c.id}">${clinicLabel(c)}</option>`).join('');
+  }
+  conf.onMount();
+  sel.value = hubState.clinicId;
+  sel.dispatchEvent(new Event('change'));
 }
 
 function renderHubSummary(clinicId) {
@@ -1892,7 +1883,6 @@ function refreshHubAfterSave() {
 
 // ===== NAVIGATION =====
 function navigate(page) {
-  if (page !== 'clinic-hub') restoreTabs();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
@@ -4138,17 +4128,14 @@ function renderRxLastReport() {
 }
 
 // ===== REPORT (카톡 전송용 이미지) =====
+// 거래처 관리 화면의 "보고서" 버튼 전용 진입점. 보고서 폼은 더 이상 모달이 아니라
+// 허브 안에 영구히 살아 있으므로, 허브로 이동해 report 탭을 연다 (openMileageClinic과 동일 패턴).
 function openReportModal(clinicId) {
-  const sel = document.getElementById('report-clinic');
-  sel.innerHTML = clinicsSortedByBalance()
-    .map(c => `<option value="${c.id}">${clinicLabel(c)}</option>`).join('');
-  sel.value = clinicId;
-
-  document.getElementById('report-modal').classList.add('open');
-  renderReport();
+  navigate('clinic-hub');
+  selectHubClinic(clinicId);
+  hubState.tab = 'report';
+  renderClinicPanel(clinicId);
 }
-
-function closeReportModal() { document.getElementById('report-modal').classList.remove('open'); }
 
 function openSpendFromReport() {
   const clinicId = document.getElementById('report-clinic').value;
