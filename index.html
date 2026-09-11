@@ -3959,13 +3959,16 @@ function getReportData() {
 
   // 지난 보고서 이후 새로 입력된 처방을 담는다. 스냅샷이 없거나 새 처방이 없으면
   // 종전대로 가장 최근 1건만 쓴다. (여러 건이면 잔액 계산이 어긋나지 않도록 모두 합산)
-  const snapshot = reportSnapshots[clinicId];
+  const lastSnapshot = reportSnapshots[clinicId];
   const allEarnTxs = transactions
     .filter(t => t.clinicId === clinicId && t.type === 'earn')
     .sort((a, b) => b.createdAt - a.createdAt);
   const latestEarnTx = allEarnTxs[0];
-  const newEarnTxs = snapshot ? allEarnTxs.filter(t => t.createdAt > snapshot.at) : [];
+  const newEarnTxs = lastSnapshot ? allEarnTxs.filter(t => t.createdAt > lastSnapshot.at) : [];
   const earnTxs = newEarnTxs.length ? newEarnTxs : (latestEarnTx ? [latestEarnTx] : []);
+  // 새 처방이 없어 직전 보고서를 그대로 다시 그리는 경우, 스냅샷 잔액에는 그 적립과 차감이
+  // 이미 반영돼 있다. 스냅샷을 기준으로 삼으면 적립·차감이 사라진 보고서가 나오므로 무시한다.
+  const snapshot = newEarnTxs.length ? lastSnapshot : null;
 
   const rate = latestEarnTx ? latestEarnTx.rate : c.rate;
   const items = [];
