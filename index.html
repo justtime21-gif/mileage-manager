@@ -306,6 +306,9 @@
       <button id="mileage-auth-btn" class="btn btn-outline btn-sm" style="margin-top:8px;width:100%;justify-content:center;display:none" onclick="handleMileageAuth()">Google 로그인</button>
     </div>
     <nav>
+      <div class="nav-item" data-nav="clinic-hub" onclick="navigate('clinic-hub')">
+        <span>🏥</span> 거래처
+      </div>
       <div class="nav-item active" data-nav="dashboard" onclick="navigate('dashboard')">
         <span class="nav-icon">🏠</span><span>대시보드</span>
       </div>
@@ -329,6 +332,23 @@
 
   <!-- Main -->
   <main class="main">
+
+    <div id="page-clinic-hub" class="page">
+      <div style="display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start">
+        <div class="card" style="padding:12px">
+          <input id="hub-search" placeholder="거래처 검색" oninput="hubState.filter=this.value; renderClinicList()"
+            style="width:100%;padding:8px;border:1px solid var(--gray-300);border-radius:6px;margin-bottom:8px">
+          <select id="hub-sort" onchange="hubState.sort=this.value; renderClinicList()"
+            style="width:100%;padding:6px;border:1px solid var(--gray-300);border-radius:6px;margin-bottom:8px">
+            <option value="name">이름순</option>
+            <option value="balance">잔액순</option>
+            <option value="overdue">오래된순</option>
+          </select>
+          <div id="hub-clinic-list" style="max-height:70vh;overflow-y:auto"></div>
+        </div>
+        <div id="hub-panel" class="card"></div>
+      </div>
+    </div>
 
     <!-- Dashboard -->
     <div id="page-dashboard" class="page active">
@@ -1755,6 +1775,55 @@ function restoreTabs() {
   });
 }
 
+// ===== 거래처 허브 =====
+let hubState = { clinicId: null, tab: 'summary', filter: '', sort: 'name' };
+
+function renderClinicHub() {
+  renderClinicList();
+  renderClinicPanel(hubState.clinicId);
+}
+
+function renderClinicList() {
+  const root = document.getElementById('hub-clinic-list');
+  if (!root) return;
+  const overdue = new Map(getMileageReviewRows().map(r => [r.clinic.id, r.overdueDays]));
+  const keyword = hubState.filter.trim();
+  let list = clinics.filter(c => !keyword || c.name.includes(keyword) || (c.branch || '').includes(keyword));
+
+  if (hubState.sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name));
+  if (hubState.sort === 'balance') list.sort((a, b) => getClinicBalance(b.id).balance - getClinicBalance(a.id).balance);
+  if (hubState.sort === 'overdue') list.sort((a, b) => (overdue.get(b.id) || -1) - (overdue.get(a.id) || -1));
+
+  root.innerHTML = list.map(c => {
+    const { balance } = getClinicBalance(c.id);
+    const days = overdue.get(c.id);
+    const active = c.id === hubState.clinicId;
+    return `<div onclick="selectHubClinic('${c.id}')" style="padding:8px;border-radius:6px;cursor:pointer;margin-bottom:2px;
+      background:${active ? 'var(--primary-light)' : 'transparent'}">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+        <strong style="font-size:13px">${days !== undefined ? '<span style="color:var(--danger)">●</span> ' : ''}${c.name}</strong>
+        <span style="font-size:13px;color:${balance < 0 ? 'var(--danger)' : 'var(--primary)'}">${fmtNum(balance)}</span>
+      </div>
+      <div class="text-sm" style="color:var(--gray-500)">${c.branch || ''}${days !== undefined ? ` · ${days}일 경과` : ''}</div>
+    </div>`;
+  }).join('') || '<div class="text-sm" style="color:var(--gray-400);padding:8px">거래처가 없습니다.</div>';
+}
+
+function selectHubClinic(clinicId) {
+  restoreTabs();
+  hubState.clinicId = clinicId;
+  hubState.tab = 'summary';
+  renderClinicList();
+  renderClinicPanel(clinicId);
+}
+
+function renderClinicPanel(clinicId) {
+  const root = document.getElementById('hub-panel');
+  if (!root) return;
+  const c = clinics.find(x => x.id === clinicId);
+  root.innerHTML = c ? `<div>${c.name}</div>` : '<div class="text-sm" style="color:var(--gray-400)">왼쪽에서 거래처를 선택하세요.</div>';
+}
+
 // ===== NAVIGATION =====
 function navigate(page) {
   if (page !== 'clinic-hub') restoreTabs();
@@ -1764,6 +1833,7 @@ function navigate(page) {
   const section = ({ prescriptions: 'mileage', history: 'mileage', redeem: 'dispatch', 'promo-track': 'dispatch' })[page] || page;
   document.querySelector(`.nav-item[data-nav="${section}"]`)?.classList.add('active');
 
+  if (page === 'clinic-hub') renderClinicHub();
   if (page === 'dashboard') renderDashboard();
   if (page === 'clinics') renderClinics();
   if (page === 'prescriptions') { renderRxClinicSelect(); renderRxLastReport(); }
