@@ -306,14 +306,14 @@
       <button id="mileage-auth-btn" class="btn btn-outline btn-sm" style="margin-top:8px;width:100%;justify-content:center;display:none" onclick="handleMileageAuth()">Google 로그인</button>
     </div>
     <nav>
-      <div class="nav-item" data-nav="clinic-hub" onclick="navigate('clinic-hub')">
+      <div class="nav-item active" data-nav="clinic-hub" onclick="navigate('clinic-hub')">
         <span class="nav-icon">🏥</span><span>거래처</span>
       </div>
-      <div class="nav-item active" data-nav="dashboard" onclick="navigate('dashboard')">
+      <div class="nav-item" data-nav="dashboard" onclick="navigate('dashboard')">
         <span class="nav-icon">🏠</span><span>대시보드</span>
       </div>
       <div class="nav-item" data-nav="clinics" onclick="navigate('clinics')">
-        <span class="nav-icon">🏥</span><span>거래처</span>
+        <span class="nav-icon">🏥</span><span>거래처 관리</span>
       </div>
       <div class="nav-item" data-nav="mileage" onclick="navigate('prescriptions')">
         <span class="nav-icon">📋</span><span>마일리지</span>
@@ -333,7 +333,7 @@
   <!-- Main -->
   <main class="main">
 
-    <div id="page-clinic-hub" class="page">
+    <div id="page-clinic-hub" class="page active">
       <div style="display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start">
         <div class="card" style="padding:12px">
           <input id="hub-search" placeholder="거래처 검색" oninput="hubState.filter=this.value; renderClinicList()"
@@ -351,7 +351,7 @@
     </div>
 
     <!-- Dashboard -->
-    <div id="page-dashboard" class="page active">
+    <div id="page-dashboard" class="page">
       <div class="page-header flex justify-between items-center">
         <div>
           <h2>대시보드</h2>
@@ -2406,12 +2406,10 @@ function escapeHtml(value) {
 }
 
 function openMileageClinic(clinicId) {
-  navigate('prescriptions');
-  setTimeout(() => {
-    const select = document.getElementById('rx-clinic');
-    select.value = clinicId;
-    onRxClinicChange();
-  }, 0);
+  navigate('clinic-hub');
+  selectHubClinic(clinicId);
+  hubState.tab = 'rx';
+  renderClinicPanel(clinicId);
 }
 
 async function loadDispatchStatus(force = false) {
@@ -5506,6 +5504,7 @@ function saveQuickRecords() {
 // ===== INIT =====
 document.getElementById('dash-date').textContent = new Date().toLocaleDateString('ko-KR', { year:'numeric', month:'long', day:'numeric', weekday:'long' });
 renderDashboard();
+renderClinicHub();
 // 구글 로그인 준비를 미리 끝내둔다. 첫 클릭에서 준비를 시작하면 그 사이 await 때문에 팝업이 막힌다.
 // 실패해도 조용히 넘어간다 — 연결 버튼을 누를 때 실제 사유를 안내한다.
 prepareGoogleClient().catch(() => {});
