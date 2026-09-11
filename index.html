@@ -323,18 +323,6 @@
       <div class="nav-item" data-nav="dashboard" onclick="navigate('dashboard')">
         <span class="nav-icon">🏠</span><span>대시보드</span>
       </div>
-      <div class="nav-item" data-nav="clinics" onclick="navigate('clinics')">
-        <span class="nav-icon">🏥</span><span>거래처 관리</span>
-      </div>
-      <div class="nav-item" data-nav="mileage" onclick="navigate('prescriptions')">
-        <span class="nav-icon">📋</span><span>마일리지</span>
-      </div>
-      <div class="nav-item" data-nav="rx-history" onclick="navigate('rx-history')">
-        <span class="nav-icon">📜</span><span>처방 이력</span>
-      </div>
-      <div class="nav-item" data-nav="dispatch" onclick="navigate('promo-track')">
-        <span class="nav-icon">🚚</span><span>발송 관리</span>
-      </div>
       <div class="nav-item" data-nav="settings" onclick="navigate('settings')">
         <span class="nav-icon">⚙️</span><span>설정</span>
       </div>
@@ -566,7 +554,7 @@
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <button id="dash-google-btn" class="btn btn-accent" onclick="connectGoogleFromDispatch()">🔗 내 구글 계정 연결</button>
-          <button class="btn btn-primary" onclick="navigate('prescriptions')">+ 처방 입력</button>
+          <button class="btn btn-primary" onclick="navigate('clinic-hub')">+ 처방 입력</button>
         </div>
       </div>
       <div id="dash-order-schedule" style="margin-bottom:12px"></div>
@@ -1891,19 +1879,12 @@ function navigate(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
-  const section = ({ prescriptions: 'mileage', history: 'mileage', redeem: 'dispatch', 'promo-track': 'dispatch' })[page] || page;
-  document.querySelector(`.nav-item[data-nav="${section}"]`)?.classList.add('active');
+  document.querySelector(`.nav-item[data-nav="${page}"]`)?.classList.add('active');
 
   if (page === 'clinic-hub') renderClinicHub();
   if (page === 'dashboard') renderDashboard();
-  if (page === 'clinics') renderClinics();
-  if (page === 'prescriptions') { renderRxClinicSelect(); renderRxLastReport(); }
-  if (page === 'rx-history') renderRxHistory(rxHistTab);
-  if (page === 'redeem') { renderRedeemClinicSelect(); renderRedeemHistory(); renderRedeemPromoGrid(); }
   if (page === 'rx-drugs') renderRxDrugs();
   if (page === 'promo-items') renderPromoItems();
-  if (page === 'history') { renderHistoryFilters(); renderHistory(); }
-  if (page === 'promo-track') { renderPromoTrack(); renderGoogleButton(); loadDispatchStatus(); }
   if (page === 'settings') { renderRxDrugs(); renderPromoItems(); renderOrderDateList(); renderGoogleSheetStatus(); renderClinicAddresses(); }
 }
 
@@ -2381,7 +2362,7 @@ function dispatchRow(record, actionLabel) {
   return {
     title: escapeHtml(record.clinic.name),
     detail: `${record.sentDate || '출고일 미정'} · ${escapeHtml(record.item)} ${record.quantity > 1 ? `×${record.quantity}` : ''}`,
-    action: "navigate('promo-track')", actionLabel
+    action: `openDispatchClinic('${record.clinic.id}')`, actionLabel
   };
 }
 
@@ -2418,6 +2399,15 @@ function openMileageClinic(clinicId) {
   renderClinicPanel(clinicId);
 }
 
+// 종이컵 발송 대기·완료 카드 전용 진입점. 발송 현황 화면이 사라져 허브 요약 탭(거래처별
+// 적립·차감 통합 이력)으로 대신 이동한다 (openMileageClinic과 동일 패턴).
+function openDispatchClinic(clinicId) {
+  navigate('clinic-hub');
+  selectHubClinic(clinicId);
+  hubState.tab = 'summary';
+  renderClinicPanel(clinicId);
+}
+
 async function loadDispatchStatus(force = false) {
   if (dispatchSyncState.loading && !force) return;
   dispatchSyncState = { ...dispatchSyncState, loading: true, error: '' };
@@ -2447,7 +2437,6 @@ async function loadDispatchStatus(force = false) {
   }
   renderDashboardWorklists();
   renderGoogleButton();
-  if (document.getElementById('page-promo-track')?.classList.contains('active')) renderPromoTrack();
 }
 
 // ===== CLINICS =====
@@ -2703,7 +2692,7 @@ function saveClinic() {
 
   if (clinicModalFromSheetReview) {
     clinicModalFromSheetReview = false;
-    if (document.getElementById('page-promo-track')?.classList.contains('active')) renderPromoTrack();
+    renderDashboardWorklists();
   }
 
   // 처방 입력 화면에서 신규 등록한 경우: 셀렉트 갱신 후 바로 선택
@@ -5499,7 +5488,6 @@ function saveQuickRecords() {
   document.getElementById(_rid).innerHTML = '';
   const _inp = document.getElementById(_iid); if (_inp) _inp.value = '';
   alert(`✅ 완료!\n발송 기록 ${newTxCount}건 저장${newClinicCount ? `\n신규 거래선 ${newClinicCount}개 등록` : ''}`);
-  if (document.querySelector('#page-promo-track.active')) renderPromoTrack();
 }
 
 // ===== INIT =====
