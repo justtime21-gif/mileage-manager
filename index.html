@@ -147,14 +147,8 @@
   .rx-total-value { font-size: 18px; font-weight: 700; color: var(--primary); }
 
   /* Search */
-  .search-bar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; }
   .search-input { flex: 1; padding: 9px 12px; border: 1px solid var(--gray-300); border-radius: 8px; font-size: 14px; outline: none; }
   .search-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
-
-  /* Tabs */
-  .tabs { display: flex; gap: 4px; background: var(--gray-100); border-radius: 8px; padding: 4px; margin-bottom: 20px; width: fit-content; }
-  .tab { padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; color: var(--gray-500); }
-  .tab.active { background: white; color: var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 
   /* Mileage bar */
   .mileage-bar { background: var(--gray-200); border-radius: 4px; height: 6px; overflow: hidden; margin-top: 4px; }
@@ -577,161 +571,6 @@
           🔍 발송 내역 분석
         </button>
         <div id="dash-parse-result" style="margin-top:16px"></div>
-      </div>
-    </div>
-
-    <!-- Clinics -->
-    <div id="page-clinics" class="page">
-      <div class="page-header flex justify-between items-center">
-        <div>
-          <h2>거래선 관리</h2>
-          <p>치과별 마일리지 적립률 및 잔액 관리</p>
-        </div>
-        <button class="btn btn-primary" onclick="openClinicModal()">+ 거래선 추가</button>
-      </div>
-      <div class="card">
-        <div class="search-bar">
-          <input class="search-input" type="text" placeholder="거래선명 검색..." oninput="filterClinics(this.value)">
-          <select id="clinic-filter-sort" onchange="filterClinics(document.querySelector('.search-input').value)" style="padding:9px 12px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;outline:none;">
-            <option value="name">이름순</option>
-            <option value="balance-desc">잔액 높은순</option>
-            <option value="balance-asc">잔액 낮은순</option>
-          </select>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>거래선명</th>
-                <th>적립률</th>
-                <th class="td-num">총 처방액</th>
-                <th class="td-num">총 적립</th>
-                <th class="td-num">총 차감</th>
-                <th class="td-num">잔액</th>
-                <th>최종 업데이트</th>
-                <th>관리</th>
-              </tr>
-            </thead>
-            <tbody id="clinic-table-body"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- Prescriptions -->
-    <div id="page-prescriptions" class="page">
-      <div class="page-header flex justify-between items-center">
-        <div>
-          <h2>처방 입력</h2>
-          <p>월별 원외처방 통계를 입력하여 마일리지를 적립합니다</p>
-        </div>
-        <button class="btn btn-outline" onclick="navigate('history')">이력 조회</button>
-      </div>
-    </div>
-
-    <!-- 처방 이력 -->
-    <div id="page-rx-history" class="page">
-      <div class="page-header flex justify-between items-center">
-        <div><h2>처방 이력</h2><p>거래선별 처방 입력 내역을 조회합니다</p></div>
-        <button class="btn btn-outline" onclick="navigate('history')">전체 이력 조회</button>
-      </div>
-      <div class="card">
-        <div class="card-title">처방 입력 이력</div>
-        <div class="tabs">
-          <div class="tab active" onclick="switchRxTab('all', this)">전체</div>
-          <div class="tab" onclick="switchRxTab('month', this)">이번달</div>
-        </div>
-        <div id="rx-history-list"></div>
-      </div>
-    </div>
-
-    <!-- Redeem -->
-    <div id="page-redeem" class="page">
-      <div class="page-header flex justify-between items-center">
-        <div><h2>판촉물 차감</h2><p>마일리지로 판촉물을 구매하고 잔액을 차감합니다</p></div>
-        <button class="btn btn-outline" onclick="navigate('promo-track')">발송 현황</button>
-      </div>
-    </div>
-
-    <!-- History -->
-    <div id="page-history" class="page">
-      <div class="page-header flex justify-between items-center">
-        <div><h2>이력 조회</h2><p>전체 적립 및 차감 내역</p></div>
-        <button class="btn btn-outline" onclick="navigate('prescriptions')">처방 입력</button>
-      </div>
-      <div class="card" style="margin-bottom:16px">
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;align-items:end">
-          <div class="form-group">
-            <label>거래선</label>
-            <select id="hist-clinic-filter">
-              <option value="">전체</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>유형</label>
-            <select id="hist-type-filter">
-              <option value="">전체</option>
-              <option value="earn">적립</option>
-              <option value="spend">차감</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>기간</label>
-            <input type="month" id="hist-month-filter">
-          </div>
-          <div style="display:flex;gap:8px">
-            <button class="btn btn-primary" onclick="renderHistory()">조회</button>
-            <button class="btn btn-outline" onclick="openNewSpendModal()" style="white-space:nowrap">+ 차감 추가</button>
-          </div>
-        </div>
-      </div>
-      <div class="card">
-        <div id="history-list"></div>
-      </div>
-    </div>
-
-    <!-- 발송 현황 -->
-    <div id="page-promo-track" class="page">
-      <div class="page-header flex justify-between items-center">
-        <div><h2>🚚 판촉물 발송 현황</h2><p>월별 발송 체크리스트 및 거래선별 이력</p></div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <button id="pt-google-btn" class="btn btn-primary" onclick="connectGoogleFromDispatch()">🔗 내 구글 계정 연결</button>
-          <button class="btn btn-outline" onclick="loadDispatchStatus(true)" title="구글시트 새로고침">↻ 시트 새로고침</button>
-          <button class="btn btn-outline" onclick="navigate('redeem')">💳 마일리지 차감</button>
-        </div>
-      </div>
-
-      <!-- 연간 체크리스트 -->
-      <div class="card" style="margin-bottom:16px">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
-          <h3 style="margin:0">발송 체크리스트</h3>
-          <input type="number" id="pt-year" min="2020" max="2099" onchange="renderPromoTrack()" style="width:90px;border:1px solid var(--gray-300);border-radius:6px;padding:6px 10px">
-          <span style="font-size:13px;color:var(--gray-400)">✅ 완료 &nbsp; 🟧 시트 발송대기 &nbsp; ⬜ 미발송 (클릭 → 입력)</span>
-        </div>
-        <div id="pt-sheet-status" style="margin-bottom:12px"></div>
-        <div id="pt-sheet-review-card" style="margin:0 0 12px;padding:12px 14px;border:1px solid #fecaca;border-radius:8px;background:#fffafa;display:none">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-            <strong>⚠️ 시트 확인 필요</strong>
-            <span id="pt-sheet-review-count" style="color:var(--danger);font-weight:700;font-size:14px"></span>
-          </div>
-          <p style="margin:0 0 8px;color:var(--gray-500);font-size:12px">거래처명 매칭, 출고 상황 또는 날짜를 확인하면 다음 동기화 때 체크리스트에 반영됩니다.</p>
-          <div id="pt-sheet-review-list"></div>
-        </div>
-        <div style="overflow-x:auto">
-          <div id="pt-checklist"></div>
-        </div>
-      </div>
-
-      <!-- 거래선별 이력 -->
-      <div class="card">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
-          <h3 style="margin:0">거래선별 발송 이력</h3>
-          <select id="pt-clinic-filter" onchange="renderPromoHistory()" style="border:1px solid var(--gray-300);border-radius:6px;padding:6px 10px">
-            <option value="">전체</option>
-          </select>
-          <button class="btn btn-outline" onclick="copyAllPromoHistory()">📋 전체 복사</button>
-        </div>
-        <div id="pt-history"></div>
       </div>
     </div>
 
@@ -1197,27 +1036,6 @@
       <button class="btn btn-outline" onclick="closeSpendEditModal()">취소</button>
       <button class="btn btn-primary" onclick="saveSpendEdit()">저장</button>
     </div>
-  </div>
-</div>
-
-<!-- 체크리스트 즉시 발송 -->
-<div class="modal-overlay" id="checklist-send-modal">
-  <div class="modal" style="max-width:620px">
-    <h3 id="checklist-send-title">판촉물 발송 체크</h3>
-    <div id="checklist-send-meta" class="alert alert-info" style="margin-bottom:16px"></div>
-    <div style="position:sticky;top:-28px;z-index:2;display:flex;justify-content:flex-end;gap:8px;padding:10px 0;background:#fff;border-bottom:1px solid var(--gray-200);margin-bottom:14px">
-      <button class="btn btn-outline" onclick="closeChecklistSendModal()">취소</button>
-      <button class="btn btn-primary" onclick="saveChecklistSend()">✅ 발송 체크 저장</button>
-    </div>
-    <div class="form-group" style="margin-bottom:16px">
-      <label>발송 날짜</label>
-      <input type="date" id="checklist-send-date">
-    </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <strong style="font-size:14px">발송 품목 선택</strong>
-      <span class="text-sm">종이컵 등 복수 선택 가능</span>
-    </div>
-    <div class="promo-grid" id="checklist-send-items"></div>
   </div>
 </div>
 
@@ -2441,143 +2259,6 @@ async function loadDispatchStatus(force = false) {
 
 // ===== CLINICS =====
 let editingClinicId = null;
-// 거래선 표에서 펼쳐 놓은 적립/차감 내역 { clinicId, type }
-let expandedClinicTx = null;
-
-function toggleClinicTx(clinicId, type) {
-  const same = expandedClinicTx?.clinicId === clinicId && expandedClinicTx.type === type;
-  expandedClinicTx = same ? null : { clinicId, type };
-  renderClinics(document.querySelector('.search-input')?.value || '');
-}
-
-function renderClinicTxRow(clinic) {
-  if (expandedClinicTx?.clinicId !== clinic.id) return '';
-  const { type } = expandedClinicTx;
-  const isEarn = type === 'earn';
-  const txs = transactions
-    .filter(t => t.clinicId === clinic.id && t.type === type)
-    .sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.createdAt - a.createdAt);
-
-  const body = txs.length
-    ? txs.map(t => {
-        const desc = isEarn
-          ? `${txPeriod(t)} 처방 · 처방액 ${fmt(t.rxTotal || 0)} · 적립률 ${t.rate}%`
-          : (t.items || []).map(i => `${i.confidential ? '🔒' : ''}${i.name} × ${fmtNum(i.qty || 1)}개`).join(', ') || '-';
-        return `<div style="display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--gray-100);font-size:13px">
-          <span style="min-width:88px;color:var(--gray-500)">${t.date || ''}</span>
-          <span style="flex:1;color:var(--gray-700)">${escapeHtml(desc)}${t.memo ? ` <span style="color:var(--gray-400)">| ${escapeHtml(t.memo)}</span>` : ''}</span>
-          <strong style="color:${isEarn ? 'var(--primary)' : 'var(--danger)'}">${isEarn ? '+' : '-'}${fmt(t.amount)}</strong>
-          <button class="btn btn-outline btn-sm" onclick="${isEarn ? `showEarnDetail('${t.id}')` : `editSpendTx('${t.id}')`}">${isEarn ? '상세' : '수정'}</button>
-        </div>`;
-      }).join('')
-    : `<div style="padding:10px 0;color:var(--gray-400);font-size:13px">${isEarn ? '적립' : '차감'} 내역이 없습니다.</div>`;
-
-  const initial = clinic.initialBalance || 0;
-  const initialNote = isEarn && initial > 0
-    ? `<div style="padding:7px 0;border-top:1px solid var(--gray-100);font-size:13px;color:var(--gray-500)">앱 사용 전 이전 잔액 <strong>${fmt(initial)}</strong> 포함</div>`
-    : '';
-
-  return `<tr><td colspan="8" style="padding:12px 16px;background:${isEarn ? '#f0fdf4' : '#fef2f2'};border-bottom:1px solid var(--gray-200)">
-    <div style="font-weight:700;font-size:13px;color:${isEarn ? 'var(--primary-dark)' : 'var(--danger)'};margin-bottom:2px">
-      ${escapeHtml(clinic.name)} ${isEarn ? '적립' : '차감'} 내역 ${txs.length}건
-    </div>
-    ${body}${initialNote}
-  </td></tr>`;
-}
-
-function renderClinics(filter = '', sort = '') {
-  let list = [...clinics];
-  if (filter) list = list.filter(c => c.name.includes(filter) || (c.branch || '').includes(filter));
-  const sortVal = sort || document.getElementById('clinic-filter-sort')?.value || 'name';
-  if (sortVal === 'name') list.sort((a, b) => a.name.localeCompare(b.name));
-  if (sortVal === 'balance-desc') list.sort((a, b) => getClinicBalance(b.id).balance - getClinicBalance(a.id).balance);
-  if (sortVal === 'balance-asc') list.sort((a, b) => getClinicBalance(a.id).balance - getClinicBalance(b.id).balance);
-
-  const tbody = document.getElementById('clinic-table-body');
-
-  if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="8"><div class="empty"><div class="empty-icon">🏥</div><p>등록된 거래선이 없습니다</p></div></td></tr>`;
-    return;
-  }
-
-  const group1 = list.filter(c => !c.noMileage && !c.dualTrack);
-  const group2 = list.filter(c => c.dualTrack && !c.noMileage);
-  const group3 = list.filter(c => c.noMileage);
-
-  const renderRow = c => {
-    const { earned, spent, balance, initial } = getClinicBalance(c.id);
-    const totalRx = getClinicTotalRx(c.id);
-    const balColor = balance < 0 ? 'var(--danger)' : 'var(--primary)';
-    const updated = getClinicLastUpdated(c.id);
-    const updateCell = updated
-      ? `<span style="font-size:13px;color:var(--gray-700);font-weight:600">${updated.day}</span><div class="text-sm" style="color:var(--gray-500)">${updated.time}</div>`
-      : `<span class="text-sm" style="color:var(--gray-400)">기록 없음</span>`;
-    if (c.noMileage) {
-      return `<tr>
-        <td><strong>${c.name}</strong>${c.branch ? ` <span class="text-sm">(${c.branch})</span>` : ''}</td>
-        <td><span class="badge badge-gray" style="color:#6b7280;background:#f3f4f6">미적용</span></td>
-        <td class="td-num" style="color:var(--gray-300)">—</td>
-        <td class="td-num" style="color:var(--gray-300)">—</td>
-        <td class="td-num" style="color:var(--gray-300)">—</td>
-        <td class="td-num" style="color:var(--gray-300)">—</td>
-        <td>${updateCell}</td>
-        <td>
-          <button class="btn btn-outline btn-sm" onclick="editClinic('${c.id}')">수정</button>
-          <button class="btn btn-outline btn-sm" style="margin-left:4px;color:var(--danger)" onclick="deleteClinic('${c.id}')">삭제</button>
-        </td>
-      </tr>`;
-    }
-    // 적립/차감 숫자를 눌러 내역을 바로 펼쳐 본다
-    const numCell = (type, value, color, extra = '') => {
-      const open = expandedClinicTx?.clinicId === c.id && expandedClinicTx.type === type;
-      return `<td class="td-num" style="color:${color};cursor:pointer" title="클릭하면 ${type === 'earn' ? '적립' : '차감'} 내역이 펼쳐집니다"
-        onclick="toggleClinicTx('${c.id}', '${type}')">
-        <span style="border-bottom:1px dashed currentColor">${fmtNum(value)}</span>${open ? ' ▾' : ''}${extra}</td>`;
-    };
-    const initialNote = initial > 0 ? `<div class="text-sm" style="color:var(--gray-500)">이전 ${fmtNum(initial)} 포함</div>` : '';
-    // 적립 칸은 '이전 잔액 + 적립 합계'를 보여준다. 이전 잔액을 빼고 적으면 한 행 안에서
-    // 적립 - 차감 ≠ 잔액이 되어 계산이 틀린 것처럼 보인다 ('이전 … 포함' 안내와도 어긋난다).
-    const earnedWithInitial = earned + initial;
-    return `<tr>
-      <td><strong>${c.name}</strong>${c.branch ? ` <span class="text-sm">(${c.branch})</span>` : ''}</td>
-      <td><span class="badge badge-green">${c.rate}%</span></td>
-      <td class="td-num">${fmtNum(totalRx)}</td>
-      ${numCell('earn', earnedWithInitial, 'var(--primary)', initialNote)}
-      ${numCell('spend', spent, 'var(--danger)')}
-      <td class="td-num"><strong style="color:${balColor}">${fmtNum(balance)}</strong></td>
-      <td>${updateCell}</td>
-      <td>
-        <button class="btn btn-sm" style="background:var(--primary-light);color:var(--primary-dark);font-weight:600" onclick="openReportModal('${c.id}')">📊 보고서</button>
-        <button class="btn btn-outline btn-sm" style="margin-left:4px" onclick="editClinic('${c.id}')">수정</button>
-        <button class="btn btn-outline btn-sm" style="margin-left:4px;color:var(--danger)" onclick="deleteClinic('${c.id}')">삭제</button>
-      </td>
-    </tr>${renderClinicTxRow(c)}`;
-  };
-
-  const catHeader = (num, label, color, bg, border, count) =>
-    `<tr><td colspan="8" style="padding:10px 16px;background:${bg};border-top:2px solid ${border};border-bottom:1px solid ${border}40">
-      <span style="font-weight:700;font-size:13px;color:${color}">${num} ${label}</span>
-      <span style="font-size:12px;color:#6b7280;margin-left:8px">${count}개 거래선</span>
-    </td></tr>`;
-
-  let html = '';
-  if (group1.length) {
-    html += catHeader('①', '마일리지 적립·차감 관리', '#065f46', '#f0fdf4', '#059669', group1.length);
-    html += group1.map(renderRow).join('');
-  }
-  if (group2.length) {
-    html += catHeader('②', '마일리지 적립 + 정기 판촉물 병행 (판촉물 차감 없음)', '#1e40af', '#eff6ff', '#3b82f6', group2.length);
-    html += group2.map(renderRow).join('');
-  }
-  if (group3.length) {
-    html += catHeader('③', '판촉물 발송 (마일리지 미적용)', '#5b21b6', '#f5f3ff', '#7c3aed', group3.length);
-    html += group3.map(renderRow).join('');
-  }
-
-  tbody.innerHTML = html;
-}
-
-function filterClinics(val) { renderClinics(val); }
 
 function openClinicModal(id = null) {
   editingClinicId = id;
@@ -3343,33 +3024,6 @@ function saveRx() {
   refreshHubAfterSave();
   clearRxForm();
   alert('✅ 마일리지가 적립되었습니다!');
-}
-
-let rxHistTab = 'all';
-function switchRxTab(tab, el) {
-  rxHistTab = tab;
-  document.querySelectorAll('#page-rx-history .tab').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
-  renderRxHistory(tab);
-}
-
-function renderRxHistory(tab) {
-  let txs = transactions.filter(t => t.type === 'earn');
-  if (tab === 'month') txs = txs.filter(t => t.date?.startsWith(thisMonth()));
-  txs = [...txs].sort((a, b) => b.createdAt - a.createdAt);
-
-  document.getElementById('rx-history-list').innerHTML = txs.length ? txs.map(t => {
-    const c = clinics.find(x => x.id === t.clinicId);
-    return `<div class="history-item">
-      <div class="history-icon earn">📋</div>
-      <div class="history-info">
-        <div class="history-clinic">${c?.name || '-'}</div>
-        <div class="history-desc">${txPeriod(t)} 처방 | 처방액 ${fmt(t.rxTotal || 0)} | 적립률 ${t.rate}%</div>
-        <div class="history-date">${t.date || ''} ${t.memo ? '| ' + t.memo : ''}</div>
-      </div>
-      <div class="history-amount earn">+${fmt(t.amount)}</div>
-    </div>`;
-  }).join('') : '<div class="empty"><div class="empty-icon">📋</div><p>처방 이력이 없습니다</p></div>';
 }
 
 // ===== REDEEM =====
@@ -4907,48 +4561,6 @@ function copyAllPromoHistory() {
     .catch(() => alert('복사에 실패했습니다.'));
 }
 
-// ===== HISTORY =====
-function renderHistoryFilters() {
-  const sel = document.getElementById('hist-clinic-filter');
-  sel.innerHTML = '<option value="">전체</option>' +
-    clinicsSortedByBalance().map(c => `<option value="${c.id}">${clinicLabel(c)}</option>`).join('');
-}
-
-function renderHistory() {
-  const clinicId = document.getElementById('hist-clinic-filter').value;
-  const type = document.getElementById('hist-type-filter').value;
-  const month = document.getElementById('hist-month-filter').value;
-
-  let txs = [...transactions];
-  if (clinicId) txs = txs.filter(t => t.clinicId === clinicId);
-  if (type) txs = txs.filter(t => t.type === type);
-  if (month) txs = txs.filter(t => t.date?.startsWith(month));
-  txs.sort((a, b) => b.createdAt - a.createdAt);
-
-  document.getElementById('history-list').innerHTML = txs.length ? txs.map(t => {
-    const c = clinics.find(x => x.id === t.clinicId);
-    const isEarn = t.type === 'earn';
-    return `<div class="history-item">
-      <div class="history-icon ${isEarn ? 'earn' : 'spend'}">${isEarn ? '📋' : '🎁'}</div>
-      <div class="history-info">
-        <div class="history-clinic">${c?.name || '-'}</div>
-        <div class="history-desc">${isEarn
-          ? `처방 적립 | ${txPeriod(t)} | 처방액 ${fmt(t.rxTotal || 0)} | 적립률 ${t.rate}%`
-          : `판촉물 차감 | ${(t.items || []).map(i => `${i.confidential ? '🔒' : ''}${i.name} × ${fmtNum(i.qty || 1)}개`).join(', ') || '-'}`
-        }</div>
-        <div class="history-date">${t.date || ''} ${t.memo ? '| ' + t.memo : ''}</div>
-      </div>
-      <div style="text-align:right">
-        <div class="history-amount ${isEarn ? 'earn' : 'spend'}">${isEarn ? '+' : '-'}${fmt(t.amount)}</div>
-        <div style="display:flex;gap:4px;margin-top:4px;justify-content:flex-end">
-          ${isEarn ? `<button class="btn btn-outline btn-sm" onclick="showEarnDetail('${t.id}')">상세</button>` : `<button class="btn btn-outline btn-sm" onclick="editSpendTx('${t.id}')">수정</button>`}
-          <button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="deleteTx('${t.id}')">삭제</button>
-        </div>
-      </div>
-    </div>`;
-  }).join('') : '<div class="empty"><div class="empty-icon">📊</div><p>이력이 없습니다</p></div>';
-}
-
 function showEarnDetail(txId) {
   const t = transactions.find(x => x.id === txId);
   if (!t) return;
@@ -5018,7 +4630,6 @@ function deleteTx(id) {
     onConfirm: () => {
       transactions = transactions.filter(x => x.id !== id);
       save();
-      renderHistory();
       refreshHubAfterSave();
     }
   });
