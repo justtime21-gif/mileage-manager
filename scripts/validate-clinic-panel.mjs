@@ -162,4 +162,71 @@ const order = gapFn("2026-08-31", [
 ]);
 assert.deepEqual(order.map(r => r.clinic.id), ["b", "a"]);
 
-console.log("OK — 거래처 타임라인·판촉물 정렬·정기 발송 누락 검증 통과");
+// --- mergeMileageState: 로그인 시 양쪽 기록을 합치는가 (손실 금지) ---
+const mergeFns = new Function(
+  `${grab(html, "mergeById")}\n${grab(html, "mergeMileageState")}\n${grab(html, "mergeSummary")};` +
+  `return { mergeMileageState, mergeSummary };`
+)();
+
+// 실제로 벌어진 상황: 한쪽 PC에만 백년약속치과 7월 적립이 있었다.
+const LOCAL = {
+  clinics: [
+    { id: "c1", name: "백년약속치과", rate: 15, updatedAt: 200 },
+    { id: "c2", name: "이PC에만치과", rate: 10, updatedAt: 100 },
+  ],
+  transactions: [
+    { id: "t1", clinicId: "c1", type: "earn", amount: 139986 },
+    { id: "t9", clinicId: "c1", type: "earn", amount: 127109 },   // 이 PC에만 있는 7월 적립
+  ],
+  rxDrugs: [{ id: "d1", name: "록소리펜", price: 125 }],
+  promoItems: [{ id: "p1", name: "종이컵" }],
+  appSettings: { orderDates: ["2026-09-01"], promoSheetUrl: "" },
+  reportSnapshots: { c1: { at: 500, balance: 10 } },
+};
+const SERVER = {
+  clinics: [
+    { id: "c1", name: "백년약속치과(구)", rate: 15, updatedAt: 100 },  // 더 오래된 수정
+    { id: "c3", name: "서버에만치과", rate: 12, updatedAt: 100 },
+  ],
+  transactions: [
+    { id: "t1", clinicId: "c1", type: "earn", amount: 139986 },
+    { id: "t2", clinicId: "c3", type: "earn", amount: 5000 },
+  ],
+  rxDrugs: [{ id: "d2", name: "모사프리", price: 103 }],
+  promoItems: [{ id: "p2", name: "각티슈" }],
+  appSettings: { orderDates: ["2026-08-01"], promoSheetUrl: "https://sheet" },
+  reportSnapshots: { c1: { at: 100, balance: 99 }, c3: { at: 300, balance: 7 } },
+};
+
+const merged = mergeFns.mergeMileageState(LOCAL, SERVER);
+// 거래는 어느 쪽도 사라지지 않는다 — 특히 이 PC에만 있던 t9
+assert.deepEqual(merged.transactions.map(t => t.id).sort(), ["t1", "t2", "t9"]);
+// 거래처도 합집합
+assert.deepEqual(merged.clinics.map(c => c.id).sort(), ["c1", "c2", "c3"]);
+// 같은 거래처는 updatedAt이 최신인 쪽을 쓴다
+assert.equal(merged.clinics.find(c => c.id === "c1").name, "백년약속치과");
+// 약품·판촉물도 합집합
+assert.deepEqual(merged.rxDrugs.map(d => d.id).sort(), ["d1", "d2"]);
+assert.deepEqual(merged.promoItems.map(d => d.id).sort(), ["p1", "p2"]);
+// 주문일은 합쳐서 정렬, 시트 URL은 비어 있지 않은 쪽
+assert.deepEqual(merged.appSettings.orderDates, ["2026-08-01", "2026-09-01"]);
+assert.equal(merged.appSettings.promoSheetUrl, "https://sheet");
+// 보고서 스냅샷은 거래처당 하나 — 마지막 전송(at이 큰 쪽)
+assert.equal(merged.reportSnapshots.c1.at, 500);
+assert.equal(merged.reportSnapshots.c3.at, 300);
+
+// 합치기 전 사용자에게 보여줄 숫자
+const sum = mergeFns.mergeSummary(LOCAL, SERVER);
+assert.equal(sum.localOnlyTx, 1);
+assert.equal(sum.serverOnlyTx, 1);
+assert.equal(sum.localOnlyClinics, 1);
+assert.equal(sum.serverOnlyClinics, 1);
+
+// 서버가 비어 있어도 로컬을 지우지 않는다
+const onlyLocal = mergeFns.mergeMileageState(LOCAL, {});
+assert.deepEqual(onlyLocal.transactions.map(t => t.id).sort(), ["t1", "t9"]);
+// 로컬이 비어 있으면 서버 그대로
+const onlyServer = mergeFns.mergeMileageState({}, SERVER);
+assert.deepEqual(onlyServer.transactions.map(t => t.id).sort(), ["t1", "t2"]);
+
+console.log("OK — 거래처 타임라인·판촉물 정렬·정기 발송 누락·서버 병합 검증 통과");

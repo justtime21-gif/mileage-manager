@@ -1083,6 +1083,59 @@ let mileageServerSyncTimer = null;
 let mileageServerSaving = false;
 let mileageServerDirty = false;
 
+// 로그인 시 서버 데이터로 로컬을 덮어쓰면, 이 PC에만 있던 기록이 말없이 사라진다.
+// 실제로 두 PC가 갈라진 적이 있어(한쪽에만 있던 적립 1건) 어느 쪽을 나중에 로그인하든
+// 한쪽을 잃는 상태였다. 그래서 덮어쓰지 않고 id 기준 합집합으로 합친다.
+// 거래 기록은 지우는 것보다 중복이 낫다 — 중복은 화면에서 보고 지울 수 있지만 손실은 못 되돌린다.
+function mergeById(localList, serverList, pickNewer) {
+  const byId = new Map();
+  (Array.isArray(serverList) ? serverList : []).forEach(x => x && x.id && byId.set(x.id, x));
+  (Array.isArray(localList) ? localList : []).forEach(x => {
+    if (!x || !x.id) return;
+    const existing = byId.get(x.id);
+    if (!existing) { byId.set(x.id, x); return; }
+    if (pickNewer && Number(x.updatedAt || x.createdAt || 0) > Number(existing.updatedAt || existing.createdAt || 0)) {
+      byId.set(x.id, x);
+    }
+  });
+  return [...byId.values()];
+}
+
+function mergeMileageState(local, server) {
+  const l = local || {}, sv = server || {};
+  const snapshots = { ...(sv.reportSnapshots || {}) };
+  Object.entries(l.reportSnapshots || {}).forEach(([clinicId, snap]) => {
+    const cur = snapshots[clinicId];
+    // 보고서 스냅샷은 거래처당 하나다. 마지막으로 전송한 쪽(at이 큰 쪽)이 맞다.
+    if (!cur || Number(snap?.at || 0) > Number(cur?.at || 0)) snapshots[clinicId] = snap;
+  });
+
+  return {
+    clinics: mergeById(l.clinics, sv.clinics, true),
+    transactions: mergeById(l.transactions, sv.transactions, false),
+    rxDrugs: mergeById(l.rxDrugs, sv.rxDrugs, true),
+    promoItems: mergeById(l.promoItems, sv.promoItems, true),
+    appSettings: {
+      ...(sv.appSettings || {}), ...(l.appSettings || {}),
+      orderDates: [...new Set([...(sv.appSettings?.orderDates || []), ...(l.appSettings?.orderDates || [])])].sort(),
+      promoSheetUrl: l.appSettings?.promoSheetUrl || sv.appSettings?.promoSheetUrl || '',
+    },
+    reportSnapshots: snapshots,
+  };
+}
+
+// 합치기 전에 사용자에게 보여줄 숫자. 양쪽에만 있는 건수를 센다.
+function mergeSummary(local, server) {
+  const ids = list => new Set((Array.isArray(list) ? list : []).map(x => x?.id).filter(Boolean));
+  const count = (a, b) => [...ids(a)].filter(id => !ids(b).has(id)).length;
+  return {
+    localOnlyTx: count(local?.transactions, server?.transactions),
+    serverOnlyTx: count(server?.transactions, local?.transactions),
+    localOnlyClinics: count(local?.clinics, server?.clinics),
+    serverOnlyClinics: count(server?.clinics, local?.clinics),
+  };
+}
+
 function mileageStatePayload() {
   return { clinics, transactions, rxDrugs, promoItems, appSettings, reportSnapshots };
 }
@@ -1144,16 +1197,39 @@ async function hydrateMileageState() {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || '서버 데이터를 불러오지 못했습니다.');
     if (data.state) {
-      clinics = Array.isArray(data.state.clinics) ? data.state.clinics : [];
-      transactions = Array.isArray(data.state.transactions) ? data.state.transactions : [];
-      rxDrugs = Array.isArray(data.state.rxDrugs) ? data.state.rxDrugs : getDefaultRxDrugs();
-      promoItems = Array.isArray(data.state.promoItems) ? data.state.promoItems : getDefaultPromoItems();
-      appSettings = data.state.appSettings && typeof data.state.appSettings === 'object' ? data.state.appSettings : { orderDates: [], promoSheetUrl: '' };
-      reportSnapshots = data.state.reportSnapshots && typeof data.state.reportSnapshots === 'object' ? data.state.reportSnapshots : {};
+      const localState = mileageStatePayload();
+      const diff = mergeSummary(localState, data.state);
+      const hasDiff = diff.localOnlyTx || diff.localOnlyClinics;
+      if (hasDiff) {
+        // 되돌릴 수 있게 합치기 직전 로컬 상태를 통째로 남긴다. 최신 1벌만 유지한다.
+        DB.set('premergeBackup', { at: Date.now(), state: localState });
+        const ok = confirm(
+          `서버 데이터와 이 브라우저 데이터가 다릅니다.\n\n` +
+          `이 PC에만 있는 기록: 거래 ${diff.localOnlyTx}건, 거래처 ${diff.localOnlyClinics}곳\n` +
+          `서버에만 있는 기록: 거래 ${diff.serverOnlyTx}건, 거래처 ${diff.serverOnlyClinics}곳\n\n` +
+          `둘을 합칩니다(어느 쪽도 지우지 않습니다). 합치기 전 이 브라우저 상태는 자동 백업됩니다.\n계속할까요?`
+        );
+        if (!ok) {
+          renderMileageAuthStatus('⚠️ 병합을 취소했습니다. 서버 저장이 꺼진 상태입니다.', 'error');
+          return;
+        }
+      }
+      const merged = mergeMileageState(localState, data.state);
+      clinics = merged.clinics;
+      transactions = merged.transactions;
+      rxDrugs = merged.rxDrugs.length ? merged.rxDrugs : getDefaultRxDrugs();
+      promoItems = merged.promoItems.length ? merged.promoItems : getDefaultPromoItems();
+      appSettings = merged.appSettings;
+      reportSnapshots = merged.reportSnapshots;
       migrateBrochureDrugs();
       migrateCombinedPromoItems();
       migrateClinicNames();
-      renderMileageAuthStatus(`✅ ${data.user?.mrName || data.user?.name || data.user?.email || '내 계정'} 서버 데이터`, 'ok');
+      save();
+      if (hasDiff) {
+        mileageServerReady = true;
+        await saveMileageStateToServer();
+      }
+      renderMileageAuthStatus(`✅ ${data.user?.mrName || data.user?.name || data.user?.email || '내 계정'} 서버 데이터${hasDiff ? ` · 이 PC 기록 ${diff.localOnlyTx}건 병합됨` : ''}`, 'ok');
     } else {
       const hasLocalData = clinics.length || transactions.length;
       if (hasLocalData && confirm('이 브라우저에 저장된 기존 마일리지 데이터를 현재 로그인 계정의 서버 DB로 옮길까요?')) {
