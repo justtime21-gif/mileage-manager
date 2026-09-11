@@ -1881,6 +1881,15 @@ function renderHubSummary(clinicId) {
     </div>`).join('');
 }
 
+// 처방·차감을 저장하면 헤더 잔액과 요약이 즉시 맞아야 한다.
+// 허브 화면이 떠 있지 않으면 아무것도 하지 않는다.
+function refreshHubAfterSave() {
+  if (!document.querySelector('#page-clinic-hub.active')) return;
+  hubState.tab = 'summary';
+  renderClinicList();
+  renderClinicPanel(hubState.clinicId);
+}
+
 // ===== NAVIGATION =====
 function navigate(page) {
   if (page !== 'clinic-hub') restoreTabs();
@@ -3335,6 +3344,7 @@ function saveRx() {
     date: today(), memo, createdAt: Date.now()
   });
   save();
+  refreshHubAfterSave();
   clearRxForm();
   renderRxHistory('all');
   alert('✅ 마일리지가 적립되었습니다!');
@@ -3649,6 +3659,7 @@ function saveRedeem() {
   }
 
   save();
+  refreshHubAfterSave();
   clearRedeemForm();
   renderRedeemHistory();
   renderRedeemClinicSelect();
