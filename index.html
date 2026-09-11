@@ -1627,7 +1627,8 @@ function renderClinicPanel(clinicId) {
         <div class="text-sm" style="color:var(--gray-500);margin-top:2px">적립률 ${c.rate}%</div>
       </div>
       <div style="display:flex;gap:6px">
-        <button class="btn btn-outline btn-sm" onclick="editClinic('${c.id}')">수정</button>
+        <button class="btn btn-outline btn-sm" onclick="copyPromoHistory('${c.id}')" title="발송 이력을 카톡 붙여넣기용 텍스트로 복사">발송 이력 복사</button>
+      <button class="btn btn-outline btn-sm" onclick="editClinic('${c.id}')">수정</button>
         <button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="deleteClinic('${c.id}')">삭제</button>
       </div>
     </div>
@@ -2121,6 +2122,26 @@ function getRegularDispatchReviewRows(todayStr, clinicList, txs) {
     .sort((a, b) => b.lateBy - a.lateBy || a.clinic.name.localeCompare(b.clinic.name));
 }
 
+// 거래처가 "올해 뭐 받았는지 정리해 달라"고 할 때 카톡에 바로 붙여넣을 텍스트를 만든다.
+// 화면을 보며 손으로 옮겨 적지 않게 하는 것이 목적이라 한 줄로 이어 붙인다.
+function copyPromoHistory(clinicId) {
+  const c = clinics.find(x => x.id === clinicId);
+  if (!c) return;
+  const timeline = transactions
+    .filter(t => t.clinicId === clinicId && t.type === 'spend')
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+    .flatMap(t => (t.items || []).map(it => {
+      const d = t.date || '';
+      const qty = (it.qty || 1) > 1 ? `×${it.qty}` : '';
+      return `${Number(d.slice(5, 7))}월${Number(d.slice(8, 10))}일 ${it.name}${qty}`;
+    }))
+    .join(' ');
+  if (!timeline) return alert('발송 이력이 없습니다.');
+  navigator.clipboard.writeText(`${c.name} ${timeline}`)
+    .then(() => alert('✅ 복사되었습니다.'))
+    .catch(() => alert('복사에 실패했습니다.'));
+}
+
 function isIsoDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value || '');
 }
@@ -2168,11 +2189,12 @@ function renderDashboardWorklists() {
   const mileage = getMileageReviewRows();
   const cups = getPaperCupDashboardRows();
   const dispatchGaps = getRegularDispatchReviewRows();
+  const autoSpends = dispatchSyncState.autoSpends || [];
   root.innerHTML = `
     ${renderWorklistCard({
       icon: '📋', title: '마일리지 정리 필요', tone: '#b45309', count: mileage.length,
       subtitle: '마지막 처방 종료일(없으면 적립일) 후 30일 경과',
-      rows: mileage.slice(0, 6).map(row => ({
+      rows: mileage.map(row => ({
         title: escapeHtml(row.clinic.name), detail: `${row.referenceDate} · ${row.overdueDays}일 경과`,
         action: `openMileageClinic('${row.clinic.id}')`, actionLabel: '정리'
       })), empty: '현재 정리 대상 거래처가 없습니다.'
@@ -2180,7 +2202,7 @@ function renderDashboardWorklists() {
     ${renderWorklistCard({
       icon: '📦', title: '정기 발송 누락 의심', tone: 'var(--danger)', count: dispatchGaps.length,
       subtitle: '정기 발송 거래처 중 평소 주기보다 늦어진 곳',
-      rows: dispatchGaps.slice(0, 6).map(row => ({
+      rows: dispatchGaps.map(row => ({
         title: escapeHtml(row.clinic.name),
         detail: `마지막 ${row.lastDate} · ${row.overdueDays}일 경과` +
           (row.cycleDays === null ? ' (이력 1건, 45일 기준)' : ` (평소 ${row.cycleDays}일 주기)`),
@@ -2190,17 +2212,25 @@ function renderDashboardWorklists() {
     ${renderWorklistCard({
       icon: '🥤', title: '종이컵 발송 대기', tone: '#b45309', count: cups.pending.length,
       subtitle: dispatchSubtitle('시트 발송상태: 대기·신청·미발송'),
-      rows: cups.pending.slice(0, 6).map(row => dispatchRow(row, '발송 관리')), empty: dispatchEmptyText(), refreshable: true
+      rows: cups.pending.map(row => dispatchRow(row, '발송 관리')), empty: dispatchEmptyText(), refreshable: true
     })}
     ${renderWorklistCard({
       icon: '✅', title: '종이컵 발송 완료', tone: 'var(--primary)', count: cups.completed.length,
       subtitle: '시트 발송상태: 완료·발송완료·발송',
-      rows: cups.completed.slice(0, 6).map(row => dispatchRow(row, '발송 이력')), empty: '완료로 기록된 종이컵 발송이 없습니다.'
+      rows: cups.completed.map(row => dispatchRow(row, '발송 이력')), empty: '완료로 기록된 종이컵 발송이 없습니다.'
+    })}
+    ${renderWorklistCard({
+      icon: '🧾', title: '시트 출고 자동 차감', tone: 'var(--primary)', count: autoSpends.length,
+      subtitle: '이번 동기화에서 구글시트 출고분이 잔액에서 자동 차감된 건',
+      rows: autoSpends.map(row => ({
+        title: escapeHtml(row.text), detail: `${row.date || ''} · -${fmt(row.amount || 0)}`,
+        action: `openDispatchClinic('${row.clinicId}')`, actionLabel: '확인'
+      })), empty: '이번 동기화에서 자동 차감된 시트 출고분이 없습니다.'
     })}
     ${renderWorklistCard({
       icon: '⚠️', title: '시트 확인 필요', tone: 'var(--danger)', count: cups.review.length,
       subtitle: '거래처 매칭 또는 상태·날짜 확인 필요',
-      rows: cups.review.slice(0, 6).map(row => ({
+      rows: cups.review.map(row => ({
         title: escapeHtml(row.clinicName || '거래처명 없음'), detail: `${escapeHtml(row.item || '품목 없음')} · ${escapeHtml(row.reviewReason || '확인 필요')}`,
         action: `openClinicModalWithName('${escapeOnclickArg(row.clinicName || '')}')`, actionLabel: '확인'
       })), empty: '확인이 필요한 종이컵 시트 행이 없습니다.'
@@ -2221,13 +2251,30 @@ function dispatchEmptyText() {
   return '발송 대기 중인 종이컵이 없습니다.';
 }
 
+// 처리해야 사라지는 작업 목록이라 잘라 두면 나머지는 영영 못 본다.
+// 기본 6건만 보이되 '+N건 더'로 전부 펼친다. 펼침 상태는 카드 제목으로 기억한다.
+let expandedWorklists = new Set();
+
+function toggleWorklist(title) {
+  if (expandedWorklists.has(title)) expandedWorklists.delete(title);
+  else expandedWorklists.add(title);
+  renderDashboardWorklists();
+}
+
 function renderWorklistCard({ icon, title, tone, count, subtitle, rows, empty, refreshable = false }) {
+  const expanded = expandedWorklists.has(title);
+  const shown = expanded ? rows : rows.slice(0, 6);
+  const more = rows.length - shown.length;
+  const moreHtml = (more > 0 || (expanded && rows.length > 6))
+    ? `<div style="padding:8px 0 0;border-top:1px solid var(--gray-100)"><button class="btn btn-outline btn-sm" style="width:100%" onclick="toggleWorklist('${escapeOnclickArg(title)}')">${more > 0 ? `+${more}건 더 보기` : '접기'}</button></div>`
+    : '';
+  rows = shown;
   const rowHtml = rows.length ? rows.map(row => `<div style="display:flex;gap:8px;align-items:center;padding:9px 0;border-top:1px solid var(--gray-100)">
     <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.title}</div><div style="font-size:12px;color:var(--gray-500);margin-top:2px">${row.detail}</div></div>
     <button class="btn btn-outline btn-sm" onclick="${row.action}">${row.actionLabel}</button>
   </div>`).join('') : `<div style="font-size:13px;color:var(--gray-500);padding:12px 0">${empty}</div>`;
   const refresh = refreshable ? `<button class="btn btn-outline btn-sm" onclick="loadDispatchStatus(true)" title="구글시트 새로고침">↻</button>` : '';
-  return `<section class="card" style="margin:0"><div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="font-size:18px">${icon}</span><strong style="font-size:15px">${title}</strong><span style="margin-left:auto;color:${tone};font-size:18px;font-weight:700">${count}</span>${refresh}</div><div style="font-size:12px;color:var(--gray-500);margin-bottom:8px">${subtitle}</div>${rowHtml}</section>`;
+  return `<section class="card" style="margin:0"><div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="font-size:18px">${icon}</span><strong style="font-size:15px">${title}</strong><span style="margin-left:auto;color:${tone};font-size:18px;font-weight:700">${count}</span>${refresh}</div><div style="font-size:12px;color:var(--gray-500);margin-bottom:8px">${subtitle}</div>${rowHtml}${moreHtml}</section>`;
 }
 
 function dispatchRow(record, actionLabel) {
@@ -4261,7 +4308,7 @@ function syncSheetSpends() {
       createdAt: Date.now(), sheetRow: record.row,
     });
     linked.add(record.row);
-    created.push(`${clinic.name} ${item.name} ×${qty}`);
+    created.push({ clinicId: clinic.id, text: `${clinic.name} ${item.name} ×${qty}`, amount, date: record.sentDate });
   });
   if (created.length) save();
   return created;
