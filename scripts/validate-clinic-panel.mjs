@@ -97,4 +97,69 @@ assert.deepEqual(sortPromo(PROMOS, "", SPENDS).map(r => r.item.id), ["p1", "p2",
 // 정기 품목이 없는 거래처는 주문 횟수만으로 정렬된다
 assert.deepEqual(sortPromo(PROMOS, "c2", SPENDS).map(r => r.item.id), ["p4", "p1", "p2", "p3"]);
 
-console.log("OK — 거래처 타임라인·판촉물 정렬 검증 통과");
+// --- getRegularDispatchReviewRows: 정기 발송 누락 의심 ---
+const gapFn = new Function(
+  `${grab(html, "today")}\n${grab(html, "isIsoDate")}\n${grab(html, "getRegularDispatchReviewRows")}; return getRegularDispatchReviewRows;`
+)();
+
+const GAP_CLINICS = [
+  { id: "g1", name: "월간치과", noMileage: true },            // 30일 주기
+  { id: "g2", name: "분기치과", dualTrack: true },            // 90일 주기
+  { id: "g3", name: "정상치과", noMileage: true },            // 최근에 보냄
+  { id: "g4", name: "마일리지치과", rate: 15 },               // 정기 발송 거래처가 아님
+  { id: "g5", name: "첫발송치과", noMileage: true },          // 이력 1건
+  { id: "g6", name: "미발송치과", noMileage: true },          // 보낸 적 없음
+];
+const spend = (clinicId, date) => ({ id: date + clinicId, clinicId, type: "spend", date, amount: 1, createdAt: 1 });
+const GAP_TXS = [
+  // 월간치과: 30일 간격으로 보내다 2026-06-01 이후 끊김 → 기준 45일, 91일 경과
+  spend("g1", "2026-04-02"), spend("g1", "2026-05-02"), spend("g1", "2026-06-01"),
+  // 분기치과: 91일 간격 → 기준 137일, 120일 경과 → 아직 누락 아님
+  spend("g2", "2026-02-01"), spend("g2", "2026-05-03"),
+  // 정상치과: 30일 주기, 최근 발송
+  spend("g3", "2026-07-05"), spend("g3", "2026-08-04"),
+  // 첫발송치과: 한 건뿐, 60일 경과 → 45일 기준 초과
+  spend("g5", "2026-07-03"),
+  // 마일리지치과는 정기 발송 거래처가 아니라 대상에서 빠진다
+  spend("g4", "2026-01-01"),
+];
+const gaps = gapFn("2026-08-31", GAP_CLINICS, GAP_TXS);
+
+// 정기 발송 거래처만, 그중 늦은 곳만
+assert.deepEqual(gaps.map(r => r.clinic.id), ["g1", "g5"]);
+// 월간치과: 중앙값 30일 → 기준 45일
+assert.equal(gaps[0].cycleDays, 30);
+assert.equal(gaps[0].threshold, 45);
+assert.equal(gaps[0].lastDate, "2026-06-01");
+assert.equal(gaps[0].overdueDays, 91);
+// 이력 1건이면 주기를 못 재고 고정 45일
+assert.equal(gaps[1].cycleDays, null);
+assert.equal(gaps[1].threshold, 45);
+
+// 주기가 짧아도 최소 14일은 기다린다 — 주 단위 발송이 이틀 늦었다고 뜨면 안 된다
+const weekly = gapFn("2026-08-31", [{ id: "w1", name: "주간치과", noMileage: true }], [
+  spend("w1", "2026-08-03"), spend("w1", "2026-08-10"), spend("w1", "2026-08-17"), spend("w1", "2026-08-24"),
+]);
+assert.equal(weekly.length, 0);   // 7일 주기, 7일 경과 → 14일 기준 미달
+const weeklyLate = gapFn("2026-09-10", [{ id: "w1", name: "주간치과", noMileage: true }], [
+  spend("w1", "2026-08-03"), spend("w1", "2026-08-10"), spend("w1", "2026-08-17"), spend("w1", "2026-08-24"),
+]);
+assert.equal(weeklyLate.length, 1);
+assert.equal(weeklyLate[0].threshold, 14);
+
+// 같은 날 여러 건은 발송 1회로 센다 (간격 계산이 0일로 오염되면 안 된다)
+const sameDayDispatch = gapFn("2026-08-31", [{ id: "s1", name: "중복치과", noMileage: true }], [
+  spend("s1", "2026-05-01"), { ...spend("s1", "2026-05-01"), id: "dup" }, spend("s1", "2026-06-01"),
+]);
+assert.equal(sameDayDispatch[0].cycleDays, 31);
+
+// 늦은 정도(lateBy) 순으로 정렬한다 — 경과일 순이면 분기 거래처가 늘 위에 온다
+const order = gapFn("2026-08-31", [
+  { id: "a", name: "가", noMileage: true }, { id: "b", name: "나", noMileage: true },
+], [
+  spend("a", "2026-01-01"), spend("a", "2026-04-01"), spend("a", "2026-05-01"),  // 분기급, 122일 경과
+  spend("b", "2026-06-20"), spend("b", "2026-07-05"),                            // 15일 주기, 57일 경과
+]);
+assert.deepEqual(order.map(r => r.clinic.id), ["b", "a"]);
+
+console.log("OK — 거래처 타임라인·판촉물 정렬·정기 발송 누락 검증 통과");
