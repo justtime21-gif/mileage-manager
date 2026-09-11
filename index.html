@@ -2332,11 +2332,14 @@ function renderClinics(filter = '', sort = '') {
         <span style="border-bottom:1px dashed currentColor">${fmtNum(value)}</span>${open ? ' ▾' : ''}${extra}</td>`;
     };
     const initialNote = initial > 0 ? `<div class="text-sm" style="color:var(--gray-500)">이전 ${fmtNum(initial)} 포함</div>` : '';
+    // 적립 칸은 '이전 잔액 + 적립 합계'를 보여준다. 이전 잔액을 빼고 적으면 한 행 안에서
+    // 적립 - 차감 ≠ 잔액이 되어 계산이 틀린 것처럼 보인다 ('이전 … 포함' 안내와도 어긋난다).
+    const earnedWithInitial = earned + initial;
     return `<tr>
       <td><strong>${c.name}</strong>${c.branch ? ` <span class="text-sm">(${c.branch})</span>` : ''}</td>
       <td><span class="badge badge-green">${c.rate}%</span></td>
       <td class="td-num">${fmtNum(totalRx)}</td>
-      ${numCell('earn', earned, 'var(--primary)', initialNote)}
+      ${numCell('earn', earnedWithInitial, 'var(--primary)', initialNote)}
       ${numCell('spend', spent, 'var(--danger)')}
       <td class="td-num"><strong style="color:${balColor}">${fmtNum(balance)}</strong></td>
       <td>${updateCell}</td>
