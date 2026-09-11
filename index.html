@@ -200,6 +200,8 @@
   }
   .promo-card:hover { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-light); }
   .promo-card.selected { border-color: var(--primary); background: var(--primary-light); }
+  .promo-badge { display:inline-block; font-size:11px; font-weight:700; padding:1px 6px; border-radius:10px; margin-bottom:4px; background: var(--gray-100); color: var(--gray-600); }
+  .promo-badge-regular { background: var(--accent); color: #fff; }
   .promo-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
   .promo-price { font-size: 16px; font-weight: 700; color: var(--primary); }
 
@@ -3049,6 +3051,7 @@ function updateRedeemBalance() {
   const noDeduct = c.noMileage || c.dualTrack;
   const label = c.noMileage ? ' 〔마일리지 미적용〕' : c.dualTrack ? ' 〔정기 판촉물 — 잔액 차감 없음〕' : '';
   document.getElementById('redeem-clinic-name').textContent = c.name + label;
+  renderRedeemPromoGrid();
   const balEl = document.getElementById('redeem-balance-display');
   if (noDeduct) {
     balEl.textContent = c.noMileage ? '발송 기록만 저장 (잔액 차감 없음)' : `잔액: ${fmt(balance)} (판촉물 발송은 차감 없음)`;
@@ -3060,9 +3063,42 @@ function updateRedeemBalance() {
   calcRedeemTotal();
 }
 
+// 그 거래처가 자주 시키는 판촉물을 위로 올린다. 정기 발송 품목이 최상단, 그다음 주문 횟수 순.
+// 한 차감 건 안에 같은 품목이 여러 줄로 들어 있어도 주문 1회로 센다 — '자주'는 보낸 횟수지 개수가 아니다.
+// txs는 검증 스크립트에서 주입하기 위한 것 — 앱에서는 전역 transactions를 쓴다.
+function sortPromoItemsForClinic(items, clinicId, txs) {
+  const clinic = clinics.find(c => c.id === clinicId);
+  if (!clinic) return items.map(p => ({ item: p, regular: false, orders: 0 }));
+
+  const counts = new Map();
+  (txs || transactions)
+    .filter(t => t.clinicId === clinicId && t.type === 'spend')
+    .forEach(t => {
+      const seen = new Set();
+      (t.items || []).forEach(it => {
+        const key = normalizeText(it.name || '');
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        counts.set(key, (counts.get(key) || 0) + 1);
+      });
+    });
+
+  return items
+    .map((p, idx) => ({
+      item: p,
+      idx,
+      regular: isRegularPromoForClinic(clinic, p.name),
+      orders: counts.get(normalizeText(p.name)) || 0,
+    }))
+    .sort((a, b) => (b.regular - a.regular) || (b.orders - a.orders) || (a.idx - b.idx))
+    .map(({ item, regular, orders }) => ({ item, regular, orders }));
+}
+
 function renderRedeemPromoGrid() {
-  document.getElementById('redeem-promo-grid').innerHTML = promoItems.map(p => `
+  const clinicId = document.getElementById('redeem-clinic')?.value || '';
+  document.getElementById('redeem-promo-grid').innerHTML = sortPromoItemsForClinic(promoItems, clinicId).map(({ item: p, regular, orders }) => `
     <div class="promo-card ${selectedPromoItems[p.id] ? 'selected' : ''}" onclick="togglePromoItem('${p.id}')">
+      ${regular ? '<div class="promo-badge promo-badge-regular">정기</div>' : orders ? `<div class="promo-badge">${orders}회 주문</div>` : ''}
       <div class="promo-name">${p.name}</div>
       <div class="promo-price">${fmt(p.price)}</div>
       ${selectedPromoItems[p.id] ? `<div class="text-sm" style="margin-top:4px">수량: <input type="number" min="1" value="${selectedPromoItems[p.id]}" onclick="event.stopPropagation()" oninput="setPromoQty('${p.id}', this.value)" style="width:50px;border:1px solid var(--gray-300);border-radius:4px;padding:2px 4px;font-size:12px"></div>` : ''}
