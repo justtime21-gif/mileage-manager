@@ -54,7 +54,10 @@
      workarea-2col의 인라인 grid가 풀리므로 클래스로만 전환한다 */
   .hub-pane { display: none; }
   .hub-pane.active { display: block; }
-  .hub-pane.active.workarea-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  /* minmax(0,1fr)이라야 칼럼이 min-content 밑으로도 줄어든다. 1fr만 쓰면 보고서 캔버스가
+     오른쪽 칼럼을 밀어내 1300px 아래에서 비율이 무너지고 1130px 아래에선 가로 스크롤이 생긴다. */
+  .hub-pane.active.workarea-2col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 1200px) { .hub-pane.active.workarea-2col { grid-template-columns: minmax(0, 1fr); } }
   .hub-tab-btn {
     padding: 8px 14px; border: none; background: none; cursor: pointer;
     font-weight: 600; font-size: 14px; color: var(--gray-500); border-bottom: 2px solid transparent;
@@ -1550,7 +1553,7 @@ function executeDelete() {
 // 토글(.hub-pane.active)만 하고, 보이는 탭의 select 값을 현재 거래처로 맞춘다.
 const HUB_TABS = {
   rx:     { workarea: 'rx-workarea',     select: 'rx-clinic',     onMount: () => { renderRxClinicSelect(); onRxClinicChange(); } },
-  redeem: { workarea: 'redeem-workarea', select: 'redeem-clinic', onMount: () => { renderRedeemClinicSelect(); renderRedeemPromoGrid(); updateRedeemBalance(); } },
+  redeem: { workarea: 'redeem-workarea', select: 'redeem-clinic', onMount: () => { renderRedeemClinicSelect(); renderRedeemPromoGrid(); updateRedeemBalance(); renderRedeemHistory(); } },
   report: { workarea: 'report-workarea', select: 'report-clinic', onMount: () => renderReport() },
 };
 
@@ -2079,6 +2082,45 @@ function getMileageReviewRows() {
   }).filter(Boolean).sort((a, b) => b.overdueDays - a.overdueDays || a.clinic.name.localeCompare(b.clinic.name));
 }
 
+// 정기적으로 판촉물을 보내는 거래처(마일리지 미적용 또는 병행) 중 발송이 빠진 곳을 찾는다.
+// 거래처마다 주기가 달라 고정 일수로는 못 잰다 — 그 거래처의 과거 발송 간격 중앙값을 제 주기로
+// 삼고, 그 1.5배를 넘기면 누락으로 의심한다. 주 단위로 보내는 곳이 이틀 늦었다고 뜨지 않게
+// 최소 14일은 기다린다. 발송 이력이 한 건뿐이면 잴 간격이 없으니 고정 45일로 본다.
+// todayStr·clinicList·txs는 검증 스크립트에서 주입하기 위한 것 — 앱에서는 전역을 쓴다.
+function getRegularDispatchReviewRows(todayStr, clinicList, txs) {
+  const todayMs = new Date(`${todayStr || today()}T00:00:00`).getTime();
+  const source = txs || transactions;
+
+  return (clinicList || clinics).map(clinic => {
+    if (!clinic.noMileage && !clinic.dualTrack) return null;
+
+    // 같은 날 여러 건을 보냈어도 발송 1회로 센다
+    const dates = [...new Set(source
+      .filter(t => t.clinicId === clinic.id && t.type === 'spend' && isIsoDate(t.date))
+      .map(t => t.date))].sort();
+    if (!dates.length) return null;   // 보낸 적이 없으면 잴 주기가 없다
+
+    const lastDate = dates[dates.length - 1];
+    const overdueDays = Math.floor((todayMs - new Date(`${lastDate}T00:00:00`).getTime()) / 86400000);
+
+    let cycleDays = null;
+    if (dates.length >= 2) {
+      const gaps = dates.slice(1)
+        .map((d, i) => Math.round((new Date(`${d}T00:00:00`) - new Date(`${dates[i]}T00:00:00`)) / 86400000))
+        .sort((a, b) => a - b);
+      const mid = Math.floor(gaps.length / 2);
+      cycleDays = gaps.length % 2 ? gaps[mid] : Math.round((gaps[mid - 1] + gaps[mid]) / 2);
+    }
+    const threshold = cycleDays === null ? 45 : Math.max(14, Math.round(cycleDays * 1.5));
+
+    return overdueDays > threshold
+      ? { clinic, lastDate, overdueDays, cycleDays, threshold, lateBy: overdueDays - threshold }
+      : null;
+  }).filter(Boolean)
+    // 주기가 제각각이라 경과일로 줄세우면 분기 발송 거래처가 늘 위에 온다. 얼마나 늦었는지로 센다.
+    .sort((a, b) => b.lateBy - a.lateBy || a.clinic.name.localeCompare(b.clinic.name));
+}
+
 function isIsoDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value || '');
 }
@@ -2125,6 +2167,7 @@ function renderDashboardWorklists() {
   if (!root) return;
   const mileage = getMileageReviewRows();
   const cups = getPaperCupDashboardRows();
+  const dispatchGaps = getRegularDispatchReviewRows();
   root.innerHTML = `
     ${renderWorklistCard({
       icon: '📋', title: '마일리지 정리 필요', tone: '#b45309', count: mileage.length,
@@ -2133,6 +2176,16 @@ function renderDashboardWorklists() {
         title: escapeHtml(row.clinic.name), detail: `${row.referenceDate} · ${row.overdueDays}일 경과`,
         action: `openMileageClinic('${row.clinic.id}')`, actionLabel: '정리'
       })), empty: '현재 정리 대상 거래처가 없습니다.'
+    })}
+    ${renderWorklistCard({
+      icon: '📦', title: '정기 발송 누락 의심', tone: 'var(--danger)', count: dispatchGaps.length,
+      subtitle: '정기 발송 거래처 중 평소 주기보다 늦어진 곳',
+      rows: dispatchGaps.slice(0, 6).map(row => ({
+        title: escapeHtml(row.clinic.name),
+        detail: `마지막 ${row.lastDate} · ${row.overdueDays}일 경과` +
+          (row.cycleDays === null ? ' (이력 1건, 45일 기준)' : ` (평소 ${row.cycleDays}일 주기)`),
+        action: `openDispatchClinic('${row.clinic.id}')`, actionLabel: '확인'
+      })), empty: '정기 발송이 밀린 거래처가 없습니다.'
     })}
     ${renderWorklistCard({
       icon: '🥤', title: '종이컵 발송 대기', tone: '#b45309', count: cups.pending.length,
@@ -2377,12 +2430,15 @@ function saveClinic() {
     renderDashboardWorklists();
   }
 
-  // 처방 입력 화면에서 신규 등록한 경우: 셀렉트 갱신 후 바로 선택
+  // 처방 입력 탭에서 신규 등록한 경우: 허브 선택 자체를 새 거래처로 옮긴다.
+  // 폼의 rx-clinic만 바꾸면 헤더·좌측 목록은 이전 거래처인데 적립은 새 거래처로 들어가
+  // 저장이 실패한 것처럼 보이고, 사용자가 같은 처방을 다시 넣어 이중 적립이 된다.
   if (clinicModalFromRx) {
     clinicModalFromRx = false;
-    renderRxClinicSelect();
-    document.getElementById('rx-clinic').value = savedId;
-    onRxClinicChange();
+    hubState.clinicId = savedId;
+    hubState.tab = 'rx';
+    renderClinicList();
+    renderClinicPanel(savedId);
   }
 }
 
@@ -3350,8 +3406,11 @@ function saveRedeem() {
   alert('✅ 저장되었습니다!');
 }
 
+// 허브 차감 탭 안에서는 그 거래처의 차감만 보여준다. 거래처가 안 정해졌을 때만 전체를 보여준다.
 function renderRedeemHistory() {
-  const txs = [...transactions.filter(t => t.type === 'spend')].sort((a, b) => b.createdAt - a.createdAt);
+  const clinicId = document.getElementById('redeem-clinic')?.value || '';
+  const txs = [...transactions.filter(t => t.type === 'spend' && (!clinicId || t.clinicId === clinicId))]
+    .sort((a, b) => b.createdAt - a.createdAt);
   document.getElementById('redeem-history-list').innerHTML = txs.length ? txs.map(t => {
     const c = clinics.find(x => x.id === t.clinicId);
     const itemNames = (t.items || []).map(i => `${i.name} × ${fmtNum(i.qty || 1)}개`).join(', ');
