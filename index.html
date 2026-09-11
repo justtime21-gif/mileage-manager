@@ -2778,6 +2778,157 @@ function updateRxItem(id, field, val) {
 }
 
 // ===== 통계 사진 인식 (OCR) — 여러 장 지원 =====
+
+// ===== mr-crm OCR 이식 (src/lib/ocr-amount.ts, components/OcrSheetEntry.tsx) =====
+
+// 보험코드별 제품명 키워드. 코드가 안 읽힐 때만 쓰는 보조 수단이라, 성분명이 아니라
+// 자사 표기를 요구한다 — 성분명으로 잡으면 타사 제품이 자사 칸에 들어간다.
+const OCR_KEYWORDS = {
+  '053500040': ['세파클리'],
+  '053500060': ['아목시클라'],
+  '053500080': ['아목시스'],
+  '053500050': ['록소리펜'],
+  '053500020': ['나프록소'],
+  // 아세클로페낙·에스오메프라졸은 성분명 그 자체라 타사(에어탈·넥시움 등) 행에도 들어 있다.
+  '053500180': ['오스템아세클로페낙', '오스템아스클로페낙'],
+  // 성분명 '모사프리드…'는 모든 모사프리드 제품에 들어 있어 '모사프리'로는 타사가 걸린다.
+  // 자사 품목명은 '모사프리정'이라 제형까지 넣으면 성분명과 겹치지 않는다.
+  '053500100': ['모사프리정'],
+  '053500090': ['알마펜'],
+  '053500210': ['오스템에스오메프라졸'],
+  '053500193': ['클로르헥시딘 15', '헥시딘 15'],
+  '053500191': ['클로르헥시딘 100', '헥시딘 100'],
+};
+
+// 잘못 읽은 연월이 input[type=date]에 들어가면 Safari가 SyntaxError를 던진다.
+function isValidPeriod(period) {
+  if (!period) return null;
+  const ok = d => /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d));
+  return ok(period.start) && ok(period.end) ? period : null;
+}
+
+// mr-crm `parseOcrDrugs` 이식: 보험코드 우선, 키워드는 보조.
+// hits 대신 {drug, qty} 배열을 돌려준다 — 마일리지 앱은 사진 위 표시를 하지 않는다.
+function matchOcrDrugs(lines, drugs) {
+  const found = [];
+  const used = new Set();
+  const byCode = new Map(drugs.filter(d => d.code).map(d => [String(d.code).replace(/\D/g, ''), d]));
+
+  for (const line of lines) {
+    const flat = line.replace(/[\s,]/g, '');
+    // 1) 우리 제품 코드 매칭 (가장 정확)
+    let drug = [...byCode.entries()].find(([code]) => code.length >= 8 && flat.includes(code))?.[1];
+    if (!drug) {
+      // 2) 코드가 안 잡힐 때만 제품명 키워드 보조. 단, 이 줄에 '우리 것이 아닌' 코드가
+      //    있으면 경쟁사 행이므로(예: 가스탄정=649400020, 성분 '모사프리드'가 우리 제품명
+      //    '모사프리'와 겹침) 키워드로 매칭하지 않는다.
+      // 공백을 지운 flat에서 찾으면 '55 24 420 0 0 24 420'이 9자리 숫자로 이어져 붙어
+      // 없는 보험코드가 만들어진다. 코드 판정은 공백이 남은 원본 줄에서 한다.
+      const lineCode = line.match(/\d{9}/)?.[0];
+      if (lineCode && !byCode.has(lineCode)) continue;
+      drug = drugs.find(d => (OCR_KEYWORDS[d.code] || [])
+        .some(kw => line.includes(kw) || flat.includes(kw.replace(/\s/g, ''))));
+    }
+    // 통계표 다음에 나오는 개별 처방 상세내역이 같은 코드로 다시 매칭되며 값을 덮어쓰는 것을
+    // 방지 — 먼저 나온(통계 행) 값을 우선한다.
+    if (!drug || used.has(drug.id)) continue;
+    const qty = extractAmount(line);
+    if (qty === undefined) continue;
+    used.add(drug.id);
+    found.push({ drug, qty });
+  }
+  return found;
+}
+
+// 처방통계 사진 한 줄에서 총처방량을 뽑는다. 검증: node scripts/validate-ocr.mjs
+//
+// 병원마다 표 형식이 다르다.
+// 1) '…단가, 수량, 금액' (명세서형): 약품명에 농도(예 '0.12%')가 섞여 %-기준 추출을
+//    오작동시키므로, 마지막 세 숫자 중 단가*수량=금액이 맞아떨어지는 조합을 먼저 찾아 수량을 쓴다.
+// 2) '…총처방횟수, 총처방량, 처방횟수비율%, 처방량비율%' (통계표형): 끝의 두 %가 비율 컬럼이므로
+//    그중 앞쪽(처방횟수비율) 바로 앞 숫자 = 총처방량.
+// 3) 경영통계 화면(총처방량 열 잘림): 급여처방량 + 비급여처방량.
+// 4) 셋 다 아니면(단순 EMR 라인) 최댓값으로 추정.
+function extractAmount(line) {
+  // 경영통계 화면(단가|급여횟수|급여량|비급여횟수|비급여량|총횟수|총량)은 사진에서 총처방량 열이
+  // 잘려나가는 일이 잦다 — 급여처방량 + 비급여처방량으로 되살린다. 양식 판별은 자체 검산으로만 한다:
+  // 총처방횟수 = 급여처방횟수 + 비급여처방횟수. 통계표형은 행 끝이 %라 여기 안 걸린다.
+  const toksAll = line.trim().split(/\s+/);
+  const tail = [];
+  for (let i = toksAll.length - 1; i >= 0 && /^\d[\d,]*$/.test(toksAll[i]); i--)
+    tail.unshift(parseInt(toksAll[i].replace(/,/g, ''), 10));
+  if (tail.length === 7) {
+    const [, gc, gq, nc, nq, tc, tq] = tail;
+    if (tc === gc + nc && tq === gq + nq) return tq;
+  }
+  if (tail.length === 6) {
+    const [, gc, gq, nc, nq, tc] = tail;
+    if (tc === gc + nc && gc + nc > 0 && gq + nq > 0) return gq + nq;
+  }
+
+  // 숫자를 통짜로 인식한다. `\d{1,3}(,\d{3})*` 식 정규식은 콤마 없는 4자리+ 숫자를
+  // 세 자리씩 쪼개 버려(053500040→053/500/040, 1234→123/4) 단가×수량=금액 매칭과
+  // 최댓값 추정을 모두 망가뜨린다. 콤마 없는 8자리+ 순수숫자는 보험코드로 보고 제외한다.
+  const tokens = [...line.matchAll(/(\d[\d,]*(?:\.\d+)?)(%)?/g)]
+    .map(m => ({
+      value: parseFloat(m[1].replace(/,/g, '')),
+      isPercent: !!m[2],
+      isCode: /^\d{8,}$/.test(m[1]),
+    }))
+    .filter(t => t.value > 0 && !t.isCode);
+
+  // 비급여가 0인 행은 '급여횟수 급여량 0 0 총횟수 총량' 형태라 같은 숫자쌍이 두 번 나온다
+  // (예: 910 99 108 0 0 99 108 18.4%). 이때 뒤쪽 쌍의 두 번째 값이 총처방량이다.
+  // 옆 행의 비율(%)이 줄에 섞여 들어와도 흔들리지 않아 가장 먼저 본다 — 아래 단가×수량 규칙은
+  // 허용오차가 1이라 0.7×0.9≒0.6 같은 소수 조합에 잘못 걸린다.
+  const plain = tokens.filter(t => !t.isPercent).map(t => t.value);
+  for (let i = plain.length - 2; i >= 1; i--) {
+    for (let j = i - 2; j >= 0; j--) {
+      if (plain[j] === plain[i] && plain[j + 1] === plain[i + 1]) return plain[i + 1];
+    }
+  }
+
+  for (let i = tokens.length - 3; i >= 0; i--) {
+    const [price, qty, amount] = tokens.slice(i, i + 3);
+    if (Math.abs(price.value * qty.value - amount.value) < 1) return qty.value;
+  }
+
+  // 비율 컬럼은 항상 행 끝 두 개다. 약품명 농도(0.12%)도 % 토큰이지만 앞쪽이라 안 걸린다.
+  // '값이 5 이상인 첫 %'를 비율로 보던 예전 규칙은 비율이 1.4%/2.1%처럼 작은 행을 통째로
+  // 놓치고 최댓값 추정으로 떨어져 단가(372)를 처방량(141)으로 잡았다.
+  // %가 하나뿐인 양식은 농도와 구분할 근거가 없어 예전 기준(5 이상)을 유지한다.
+  const pcts = tokens.flatMap((t, i) => (t.isPercent ? [i] : []));
+  const ratioIdx =
+    pcts.length >= 2
+      ? pcts[pcts.length - 2]
+      : pcts.length === 1 && tokens[pcts[0]].value >= 5
+        ? pcts[0]
+        : -1;
+  if (ratioIdx > 0) return tokens[ratioIdx - 1].value;
+
+  return tokens.length ? Math.max(...tokens.map(t => t.value)) : undefined;
+}
+
+// 폰 원본 사진은 5~10MB라 서버 본문 한도(~4.5MB)를 넘어 413이 난다. 업로드 전
+// 긴 변 1200px·JPEG 0.7로 줄인다 — Clova OCR엔 이 해상도로 충분하고 전송도 빨라진다.
+function compressImage(file, maxDim = 1200, quality = 0.7) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(b => (b ? resolve(b) : reject(new Error('이미지 압축 실패'))), 'image/jpeg', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('이미지를 읽지 못했습니다.')); };
+    img.src = url;
+  });
+}
+
 let statsPhotos = [];
 
 function addStatsPhotos(files) {
@@ -2842,8 +2993,8 @@ async function runStatsOcr() {
 
   try {
     const images = await Promise.all(statsPhotos.map(async f => ({
-      data: await fileToBase64(f),
-      format: (f.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg'),
+      data: await fileToBase64(await compressImage(f)),
+      format: 'jpg',
     })));
     const r = await fetch('/api/ocr', {
       method: 'POST',
@@ -2852,7 +3003,7 @@ async function runStatsOcr() {
     });
     const json = await r.json();
     if (!r.ok) throw new Error(json.error || 'OCR 요청 실패');
-    applyOcrResult(json.text || '');
+    applyOcrResult(json.lines ? json.lines.join('\n') : (json.text || ''));
   } catch (err) {
     status.innerHTML = `<span style="color:var(--danger)">⚠️ 인식에 실패했습니다 (${err.message || '인터넷 연결 필요'}). 위 사진을 보면서 직접 입력해 주세요.</span>`;
   } finally {
@@ -2884,109 +3035,17 @@ function parseStatsDate(text) {
 function applyOcrResult(text) {
   const status = document.getElementById('ocr-status');
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  const found = [];
 
-  // 통계 연월 인식 → 처방 기간 자동 설정
-  const period = parseStatsDate(text);
+  // 통계 연월 인식 → 처방 기간 자동 설정.
+  // OCR이 연월을 잘못 읽으면 '2026-067-01' 같은 값이 나오는데, Safari는 이런 문자열을
+  // input[type=date]에 넣으면 SyntaxError를 던져 인식 전체가 실패한 것처럼 보인다.
+  const period = isValidPeriod(parseStatsDate(text));
   if (period) {
     document.getElementById('rx-start').value = period.start;
     document.getElementById('rx-end').value = period.end;
   }
 
-  // 1단계: 모든 (약품, 줄) 매칭 후보를 점수와 함께 수집
-  const matches = [];
-  rxDrugs.forEach(drug => {
-    // 매칭 키워드: ① 괄호/용량 앞 제품명(baseKeys), ② 괄호 안 성분명들(ingKeys)
-    // 예: '록소리펜 정 60mg(록소프로펜)' → base ['록소리펜정'], ing ['록소프로펜']
-    const baseKeys = [];
-    const ingKeys = [];
-    const base = normalizeText(drug.name.split('(')[0].replace(/\d+\s*(mg|밀리그램|ml|g|%).*/i, ''));
-    if (base.length >= 2) baseKeys.push(base);
-    const parenMatches = drug.name.match(/\(([^)]+)\)/g) || [];
-    parenMatches.forEach(p => {
-      p.slice(1, -1).split(/[+\-·,/]/).forEach(ing => {
-        const k = normalizeText(ing.replace(/\d+\s*(mg|밀리그램|ml|g|%).*/i, ''));
-        if (k.length >= 3) ingKeys.push(k);
-      });
-    });
-    // 용량 표기(15ml 등)는 별도 키로 — 같은 약 다른 용량 제품 구분에 강한 신호
-    const mlKeys = (drug.name.match(/\d+(\.\d+)?\s*m[lL]/g) || [])
-      .map(t => normalizeText(t)).filter(k => k.length >= 3);
-    // 긴 이름은 앞 4글자 축약 키도 허용 (EMR 화면에서 품명이 잘리는 경우)
-    if (base.length > 5) baseKeys.push(base.slice(0, 4));
-    if (!baseKeys.length && !ingKeys.length && !mlKeys.length) return;
-
-    const codeKey = (drug.code || '').replace(/\D/g, '');
-
-    lines.forEach((line, lineIdx) => {
-      // 제목/합계 줄은 제외
-      if (/상세내역|처방 내역|통계|합계|검색기간|작성일/.test(line)) return;
-      const normLine = normalizeText(line);
-      const hitCode = codeKey.length >= 6 && line.replace(/[\s,]/g, '').includes(codeKey);
-      const hitBase = baseKeys.filter(k => normLine.includes(k));
-      const hitIng = ingKeys.filter(k => normLine.includes(k));
-      const hitMl = mlKeys.filter(k => normLine.includes(k));
-      // 매칭 인정 조건: 보험코드 일치 또는 제품명(축약 포함) 일치 또는 용량 일치.
-      // 성분명만 일치하는 행은 같은 성분의 타사 제품일 수 있으므로 인정하지 않음
-      // (예: 알마겔정(알마게이트)은 알마펜과 성분·단가가 같아도 다른 회사 제품)
-      if (!hitCode && !hitBase.length && !hitMl.length) return;
-
-      const lineNums = (line.replace(/,/g, '').match(/\d+/g) || []).map(Number);
-      // 점수: 코드 일치(확정) > 제품명 + 성분 + 용량 + 단가 + 데이터 행 보너스
-      let score = [...hitBase, ...hitIng].reduce((s, k) => s + k.length, 0);
-      if (hitCode) score += 100;
-      score += hitMl.length * 10;
-      if (lineNums.includes(drug.price)) score += 15;
-      if (lineNums.length >= 4) score += 25;
-      matches.push({ drug, lineIdx, line, score });
-    });
-  });
-
-  // 2단계: 한 줄당 최고 점수 약품 하나만, 약품당 한 줄만 배정
-  matches.sort((a, b) => b.score - a.score);
-  const usedLines = new Set(), usedDrugs = new Set();
-  matches.forEach(m => {
-    if (usedLines.has(m.lineIdx) || usedDrugs.has(m.drug.id)) return;
-    usedLines.add(m.lineIdx);
-    usedDrugs.add(m.drug.id);
-
-    // 수량 추출: EMR별 처방통계 3가지 형식 지원
-    // [Format B] 표준 9컬럼: 단가|급여횟수|급여량|비급여횟수|비급여량|총처방횟수|총처방량|횟수%|처방량%  → index 6
-    // [Format A] 단순 4컬럼(보라하나치과): 코드|약재명|총투약량|처방횟수  → 정리 후 숫자 2개, 첫 번째가 총투약량
-    // [Format C] Andwin(화성/효치과): 수가코드|약품명|표준코드|단가|수량|금액|회사  → 금액≈단가×수량으로 감지
-    const cleaned = m.line.replace(/,/g, '')
-      .replace(/\([^)]*\)/g, '')                         // 괄호 안 내용 제거 — 약품명 내 (1정)(100mL) 등
-      .replace(/\d{7,}/g, '')                            // 보험코드(7자리+) 제거
-      .replace(/\d+\.?\d*\s*(mg|mL|ml|g|mcg|μg)/gi, '') // 약품명 내 용량 표기 제거
-      .replace(/\/\d+[가-힣]+/g, '')                     // /1정, /1캡슐 등 단위 스펙 제거
-      .replace(/\d+\.?\d*\s*%/g, '');                    // % 비율 제거
-    // 소수점 수량(예: 690.0) 지원 — Math.floor로 정수화
-    const nums = (cleaned.match(/\d+(?:\.\d+)?/g) || []).map(v => Math.floor(parseFloat(v)));
-    const nl = nums.length;
-    let qty = '';
-    if (nl >= 7) {
-      // 총처방량 = 급여량 + 비급여량 관계로 열 위치 자동 판별
-      // [Format B] 단가|급여횟수|급여량|비급여횟수|비급여량|총처방횟수|총처방량  → nums[6] = nums[2]+nums[4]
-      // [Format D] 단가|총처방횟수|총처방량|급여횟수|급여량|비급여횟수|비급여량  → nums[2] = nums[4]+nums[6]
-      const matchB = Math.abs((nums[2] + nums[4]) - nums[6]) <= Math.max(1, nums[6] * 0.01);
-      const matchD = Math.abs((nums[4] + nums[6]) - nums[2]) <= Math.max(1, nums[2] * 0.01);
-      if (matchD && !matchB) qty = nums[2];  // Format D 확인됨
-      else qty = nums[6];                     // Format B (기본)
-    } else if (nl >= 3 && Math.abs(nums[nl-1] - nums[nl-3] * nums[nl-2]) <= Math.max(nums[nl-1] * 0.02, 1)) {
-      // [Format C] Andwin: 금액 = 단가 × 수량 관계 감지 → 수량 = 뒤에서 두 번째
-      qty = nums[nl-2];
-    } else if (nl <= 2) {
-      // [Format A] 단순 4컬럼: 총투약량이 처방횟수보다 앞에 위치
-      const cands = nums.filter(v => v !== m.drug.price && v > 0);
-      if (cands.length >= 1) qty = cands[0];
-    } else {
-      // 기타 폴백: 단가 제외 마지막 양수
-      const cands = nums.filter(v => v !== m.drug.price && v > 0);
-      if (cands.length) qty = cands[cands.length - 1];
-    }
-    if (!qty || qty <= 0) qty = '';
-    found.push({ drug: m.drug, qty });
-  });
+  const found = matchOcrDrugs(lines, rxDrugs);
 
   const periodMsg = period ? `<span style="color:#1e40af">📅 처방 기간 자동 설정: ${fmtPeriod(period.start, period.end)}</span><br>` : '';
 

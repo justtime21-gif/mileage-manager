@@ -49,8 +49,9 @@ export default async (req, res) => {
     const json = await r.json();
     if (!r.ok) return res.status(r.status).json({ error: json.message || 'OCR 요청 실패' });
 
-    const text = (json.images || []).map(im => fieldsToText(im.fields || [])).join('\n\n');
-    res.status(200).json({ text });
+    const pages = (json.images || []).map(im => fieldsToRows(im.fields || []));
+    const lines = pages.flat();
+    res.status(200).json({ text: pages.map(rows => rows.join('\n')).join('\n\n'), lines });
   } catch (e) {
     // fetch가 헤더/URL 형식으로 실패하면 원인 없는 짧은 메시지만 남는다.
     // 실제 값은 노출하지 않고 어느 환경변수를 고쳐야 하는지만 안내한다.
@@ -64,24 +65,21 @@ export default async (req, res) => {
   }
 };
 
-// CRM lib/ocr.ts 알고리즘 이식:
-// 기울어진 사진은 같은 줄의 글자도 y가 벌어져 행이 섞인다.
-// 상단 변의 기울기 중앙값으로 회전각을 구해 좌표만 역회전시킨 뒤 행 병합.
-function fieldsToText(fields) {
-  if (!fields.length) return '';
+// mr-crm `src/lib/ocr.ts`의 analyzeImageRows 이식.
+function fieldsToRows(fields) {
+  if (!fields.length) return [];
 
-  // 회전각 추정 (중앙값)
+  // 사진이 기울어 찍히면 같은 줄의 글자도 오른쪽으로 갈수록 y가 벌어져 옆 줄과 섞인다.
+  // Clova는 글자마다 4개 꼭짓점(시계방향 TL,TR,BR,BL)을 주므로, 상단 변의 기울기 중앙값으로
+  // 페이지 회전각을 구해 좌표만 역회전시킨다 — 이미지 자체를 돌리는 것보다 가볍다.
   const angles = fields
     .map(f => f.boundingPoly.vertices)
     .filter(v => v.length >= 2)
     .map(v => Math.atan2(v[1].y - v[0].y, v[1].x - v[0].x))
     .sort((a, b) => a - b);
-  const angle = angles.length >= 3 ? angles[Math.floor(angles.length / 2)] : 0;
-
+  const angle = fields.length >= 3 && angles.length ? angles[Math.floor(angles.length / 2)] : 0;
   const cos = Math.cos(-angle), sin = Math.sin(-angle);
-  function rotate(x, y) {
-    return { x: x * cos - y * sin, y: x * sin + y * cos };
-  }
+  const rotate = (x, y) => ({ x: x * cos - y * sin, y: x * sin + y * cos });
 
   const items = fields.map(f => {
     const pts = f.boundingPoly.vertices.map(v => rotate(v.x, v.y));
@@ -96,10 +94,16 @@ function fieldsToText(fields) {
   });
   items.sort((a, b) => a.y - b.y);
 
-  // 행 병합
+  // 종이를 비스듬히 찍으면 역회전만으로는 안 펴지는 원근 왜곡(행이 부채꼴로 벌어짐)이
+  // 남는다. 이때 행 '평균 y'와 비교하면 오른쪽 끝 숫자 열이 아랫행에 붙어, 품목이 아래 행의
+  // 수량을 갖게 된다. 그래서 행에서 x가 가장 가까운 글자의 y와 비교해 기울어진 baseline을
+  // 따라간다 — 행마다 기울기를 따로 추정하지 않아도 국소적으로 맞다.
   const rows = [];
   for (const it of items) {
-    const row = rows.find(r => Math.abs(r.y - it.y) < it.h * 0.6);
+    const row = rows.find(r => {
+      const near = r.items.reduce((best, i) => (Math.abs(i.x - it.x) < Math.abs(best.x - it.x) ? i : best));
+      return Math.abs(near.y - it.y) < it.h * 0.6;
+    });
     if (row) {
       row.items.push(it);
       row.y = row.items.reduce((s, i) => s + i.y, 0) / row.items.length;
@@ -115,9 +119,7 @@ function fieldsToText(fields) {
     const isIsolated = row.items.length === 1 && /^\d{4,}$/.test(text);
     if (isIsolated && merged.length) {
       let nearest = merged[0];
-      for (const m of merged) {
-        if (Math.abs(m.y - row.y) < Math.abs(nearest.y - row.y)) nearest = m;
-      }
+      for (const m of merged) if (Math.abs(m.y - row.y) < Math.abs(nearest.y - row.y)) nearest = m;
       nearest.items.push(...row.items);
       nearest.y = nearest.items.reduce((s, i) => s + i.y, 0) / nearest.items.length;
     } else {
@@ -125,8 +127,34 @@ function fieldsToText(fields) {
     }
   }
 
-  return merged
+  const texts = merged
     .sort((a, b) => a.y - b.y)
-    .map(r => r.items.sort((a, b) => a.x - b.x).map(i => i.text).join(' '))
-    .join('\n');
+    .map(r => r.items.sort((a, b) => a.x - b.x).map(i => i.text).join(' '));
+
+  return mergeFoldedRows(texts);
+}
+
+// 인쇄 통계표는 약제명이 두 줄로 접혀서, 보험코드가 있는 줄에 숫자 열이 하나도 안 붙는 일이
+// 많다 ("053500040 세파클리캡슐(세파클러수화물)_" / "(0.25g/1캡슐) 372 41 789 ...").
+// 코드 줄에 숫자가 없으면 총처방량을 뽑을 수 없으므로 이웃 줄의 숫자를 이어 붙인다.
+// 앞뒤 중 어느 쪽인지는 코드 뒤 텍스트로 가른다 — "물)_(5.29mg/1정)"처럼 닫는 괄호로
+// 시작하면 이름 꼬리이므로 숫자는 앞 줄에, "세파클리캡슐("처럼 이름 머리면 뒷 줄에 있다.
+function mergeFoldedRows(rows) {
+  const CODE = /\d{8,}/;
+  const numCount = s => (s.match(/\d[\d,]*(?:\.\d+)?%?/g) || []).length;
+  return rows.map((text, i) => {
+    if (!CODE.test(text)) return text;
+    const after = text.slice(text.search(CODE)).replace(/^\d+\s*/, '');
+    // 이미 자기 수량 열을 갖춘 행은 이웃을 붙이지 않는다 — 안 막으면 아랫 행(경쟁품) 숫자까지
+    // 삼켜 한 행처럼 보인다 (알마펜+알마겔 사례). 용량 괄호는 수량이 아니므로 세기 전에 뺀다.
+    if (numCount(after.replace(/\([^)]*\)/g, '')) >= 3) return text;
+    const close = after.indexOf(')');
+    const open = after.indexOf('(');
+    const isTail = close >= 0 && (open < 0 || close < open);
+    for (const j of isTail ? [i - 1, i + 1] : [i + 1, i - 1]) {
+      const neighbor = rows[j];
+      if (neighbor && !CODE.test(neighbor) && numCount(neighbor) >= 3) return `${text} ${neighbor}`;
+    }
+    return text;
+  });
 }
