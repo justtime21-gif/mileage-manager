@@ -1651,6 +1651,8 @@ function buildClinicTimeline(clinicId, txs) {
     }))
     .sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0));
 }
+
+// ===== 삭제 확인 모달 (2단계 확인) =====
 let pendingDelete = null;
 
 function requestDelete({ desc, requireText, onConfirm }) {
