@@ -2586,8 +2586,15 @@ function openRequestForm() {
   const wrap = document.getElementById('dg-request');
   if (wrap.style.display !== 'none') { wrap.style.display = 'none'; return; }
 
-  // 정기배송 거래처의 정기 품목을 기본으로 채운다. 그게 매달 반복되는 신청이다.
   requestState.date = requestState.date || today();
+  // 이미 쌓아 둔 것이 있으면 그대로 둔다. 닫았다 열 때마다 지워지면 누적이 안 된다.
+  if (!requestState.rows.length) fillRegularRequestRows();
+  wrap.style.display = '';
+  renderRequestForm();
+}
+
+// 정기배송 거래처의 정기 품목으로 채운다. 그게 매달 반복되는 신청이다.
+function fillRegularRequestRows() {
   requestState.rows = clinics
     .filter(c => c.dualTrack || c.noMileage)
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -2595,7 +2602,22 @@ function openRequestForm() {
       // 시트 표기로 미리 맞춰 둔다. 이 대장에 없는 품목은 체크를 꺼서 실수로 안 들어가게 한다.
       clinicId: c.id, item: toSheetItemName(name), qty: 1, office: false, checked: isSheetItem(name),
     })));
-  wrap.style.display = '';
+}
+
+function addRequestRow() {
+  // 정기 품목 말고도 얹을 수 있어야 한다. 거래처·품목은 비워 두고 고르게 한다.
+  requestState.rows.push({ clinicId: '', item: sheetItemOptions()[0] || '', qty: 1, office: false, checked: true });
+  renderRequestForm();
+}
+
+function removeRequestRow(idx) {
+  requestState.rows.splice(idx, 1);
+  renderRequestForm();
+}
+
+function resetRequestRows() {
+  if (!confirm('신청서를 비우고 정기 품목으로 다시 채울까요?')) return;
+  fillRegularRequestRows();
   renderRequestForm();
 }
 
@@ -2610,7 +2632,7 @@ function setRequestField(idx, field, value) {
 function requestEntries() {
   const applicant = (appSettings.gsApplicant || '').trim();
   const month = requestState.date ? `${Number(requestState.date.slice(5, 7))}월` : '';
-  return requestState.rows.filter(r => r.checked).map(r => {
+  return requestState.rows.filter(r => r.checked && r.clinicId).map(r => {
     const c = clinics.find(x => x.id === r.clinicId);
     return {
       month, branch: appSettings.gsBranch || '경기서북영업본부',
@@ -2651,20 +2673,25 @@ function renderRequestForm() {
       </div>` : ''}
 
       <div class="table-wrap" style="max-height:340px;overflow-y:auto">
-        <table><tr><th></th><th>거래처</th><th>항목</th><th>수량</th><th>사무실</th><th>수령지 · 주소</th></tr>
+        <table><tr><th></th><th>거래처</th><th>항목</th><th>수량</th><th>사무실</th><th>수령지 · 주소</th><th></th></tr>
         ${requestState.rows.map((r, i) => {
           const c = clinics.find(x => x.id === r.clinicId);
           const addr = r.office ? (appSettings.officeAddress || '') : (c?.address || '');
           const dest = r.office ? (appSettings.officeName || '사무실 미설정') : (c?.name || '');
           return `<tr style="opacity:${r.checked ? 1 : .45}">
             <td><input type="checkbox" ${r.checked ? 'checked' : ''} onchange="setRequestField(${i},'checked',this.checked)"></td>
-            <td>${escapeHtml(c?.name || '')}</td>
+            <td><select onchange="setRequestField(${i},'clinicId',this.value)" style="max-width:150px">
+              <option value="">거래처 선택</option>
+              ${clinics.slice().sort((a, b) => a.name.localeCompare(b.name)).map(x =>
+                `<option value="${x.id}" ${x.id === r.clinicId ? 'selected' : ''}>${escapeHtml(x.name)}</option>`).join('')}
+            </select></td>
             <td><select onchange="setRequestField(${i},'item',this.value)" style="max-width:180px">
               ${sheetItemOptions().map(opt => `<option value="${escapeHtml(opt)}" ${normalizeText(opt) === normalizeText(r.item) ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join('')}
             </select>${isSheetItem(r.item) ? '' : '<div class="text-sm" style="color:var(--danger)">이 대장에 없는 품목</div>'}</td>
             <td><input type="number" min="1" value="${r.qty}" style="width:60px" onchange="setRequestField(${i},'qty',this.value)"></td>
             <td><input type="checkbox" ${r.office ? 'checked' : ''} onchange="setRequestField(${i},'office',this.checked)"></td>
             <td class="text-sm">${escapeHtml(dest)}${addr ? ` · ${escapeHtml(addr)}` : ' · <span style="color:var(--danger)">주소 없음</span>'}</td>
+            <td><button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="removeRequestRow(${i})">✕</button></td>
           </tr>`;
         }).join('')}</table>
       </div>
@@ -2682,7 +2709,9 @@ function renderRequestForm() {
         </div>
       </div>
 
-      <div class="flex gap-8 items-center" style="margin-top:12px">
+      <div class="flex gap-8 items-center" style="margin-top:12px;flex-wrap:wrap">
+        <button class="btn btn-outline btn-sm" onclick="addRequestRow()">+ 신청 추가</button>
+        <button class="btn btn-outline btn-sm" onclick="resetRequestRows()">초기화</button>
         <button class="btn btn-primary" onclick="copyRequestTsv()">${entries.length}건 복사</button>
         <span class="text-sm">복사한 뒤 시트의 빈 행 <strong>맨 왼쪽(월 칸)</strong>에 붙여넣으세요.</span>
       </div>
