@@ -324,6 +324,13 @@
     .promo-price { font-size: 14px; }
   }
 
+  .hub-chip {
+    flex: 1 1 auto; padding: 5px 8px; border: 1px solid var(--gray-300); background: white;
+    border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--gray-600);
+    cursor: pointer; white-space: nowrap;
+  }
+  .hub-chip.active { background: var(--primary); border-color: var(--primary); color: white; }
+
   #auth-gate {
     position: fixed; inset: 0; z-index: 3000;
     background: var(--gray-50); display: flex; align-items: center; justify-content: center; padding: 24px;
@@ -401,6 +408,7 @@
             <option value="balance">잔액순</option>
             <option value="overdue">오래된순</option>
           </select>
+          <div id="hub-kind-chips" style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap"></div>
           <div id="hub-clinic-list" style="max-height:70vh;overflow-y:auto"></div>
         </div>
         <div id="hub-panel" class="card">
@@ -1690,11 +1698,39 @@ const HUB_TABS = {
   report: { workarea: 'report-workarea', select: 'report-clinic', onMount: () => renderReport() },
 };
 
-let hubState = { clinicId: null, tab: 'summary', filter: '', sort: 'name' };
+let hubState = { clinicId: null, tab: 'summary', filter: '', sort: 'name', kind: 'all' };
 
 function renderClinicHub() {
   renderClinicList();
   renderClinicPanel(hubState.clinicId);
+}
+
+// 거래처는 셋 중 하나다. 플래그 두 개(noMileage·dualTrack)의 조합이라 매번 헷갈리므로
+// 한 곳에서만 판정한다. dualTrack이 noMileage보다 우선이다 — 병행 거래처는 마일리지도 쌓는다.
+function clinicKind(c) {
+  if (c.dualTrack) return 'both';
+  if (c.noMileage) return 'regular';
+  return 'mileage';
+}
+
+const HUB_KINDS = [
+  { key: 'all', label: '전체' },
+  { key: 'mileage', label: '마일리지' },
+  { key: 'regular', label: '정기배송' },
+  { key: 'both', label: '둘 다' },
+];
+
+const KIND_BADGE = {
+  mileage: { label: '마일리지', bg: 'var(--primary-light)', color: 'var(--primary)' },
+  regular: { label: '정기배송', bg: '#fff7e6', color: '#b45309' },
+  both: { label: '병행', bg: '#eff6ff', color: '#1e40af' },
+};
+
+function renderHubKindChips(counts) {
+  const root = document.getElementById('hub-kind-chips');
+  if (!root) return;
+  root.innerHTML = HUB_KINDS.map(k => `<button class="hub-chip ${hubState.kind === k.key ? 'active' : ''}"
+    onclick="hubState.kind='${k.key}'; renderClinicList()">${k.label} ${counts[k.key]}</button>`).join('');
 }
 
 function renderClinicList() {
@@ -1703,6 +1739,13 @@ function renderClinicList() {
   const overdue = new Map(getMileageReviewRows().map(r => [r.clinic.id, r.overdueDays]));
   const keyword = hubState.filter.trim();
   let list = clinics.filter(c => !keyword || c.name.includes(keyword) || (c.branch || '').includes(keyword));
+
+  // 칩 숫자는 검색 결과 기준이다 — 검색해 놓고 전체 건수를 보여주면 숫자와 목록이 안 맞는다.
+  const counts = { all: list.length, mileage: 0, regular: 0, both: 0 };
+  list.forEach(c => { counts[clinicKind(c)]++; });
+  renderHubKindChips(counts);
+
+  if (hubState.kind && hubState.kind !== 'all') list = list.filter(c => clinicKind(c) === hubState.kind);
 
   if (hubState.sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name));
   if (hubState.sort === 'balance') list.sort((a, b) => getClinicBalance(b.id).balance - getClinicBalance(a.id).balance);
@@ -1718,7 +1761,10 @@ function renderClinicList() {
         <strong style="font-size:13px">${days !== undefined ? '<span style="color:var(--danger)">●</span> ' : ''}${c.name}</strong>
         <span style="font-size:13px;color:${balance < 0 ? 'var(--danger)' : 'var(--primary)'}">${fmtNum(balance)}</span>
       </div>
-      <div class="text-sm" style="color:var(--gray-500)">${c.branch || ''}${days !== undefined ? ` · ${days}일 경과` : ''}</div>
+      <div class="text-sm" style="color:var(--gray-500);display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+        <span style="background:${KIND_BADGE[clinicKind(c)].bg};color:${KIND_BADGE[clinicKind(c)].color};border-radius:4px;padding:0 4px;font-size:11px;font-weight:600">${KIND_BADGE[clinicKind(c)].label}</span>
+        <span>${c.branch || ''}${days !== undefined ? ` · ${days}일 경과` : ''}</span>
+      </div>
     </div>`;
   }).join('') || '<div class="text-sm" style="color:var(--gray-400);padding:8px">거래처가 없습니다.</div>';
 }
