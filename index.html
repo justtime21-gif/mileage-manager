@@ -416,6 +416,9 @@
       <div class="nav-item" data-nav="dashboard" onclick="navigate('dashboard')">
         <span class="nav-icon">🏠</span><span>대시보드</span>
       </div>
+      <div class="nav-item" data-nav="dispatch-grid" onclick="navigate('dispatch-grid')">
+        <span class="nav-icon">🚚</span><span>발송 현황</span>
+      </div>
       <div class="nav-item" data-nav="settings" onclick="navigate('settings')">
         <span class="nav-icon">⚙️</span><span>설정</span>
       </div>
@@ -658,6 +661,23 @@
     </div>
 
     <!-- Settings -->
+    <div id="page-dispatch-grid" class="page">
+      <div class="page-header flex justify-between items-center">
+        <div>
+          <h2>발송 현황</h2>
+          <p>정기배송 거래처의 월별 발송을 한눈에 봅니다</p>
+        </div>
+        <div class="flex gap-8 items-center">
+          <select id="dg-year" onchange="renderDispatchGrid()" style="padding:8px;border:1px solid var(--gray-300);border-radius:8px"></select>
+          <button class="btn btn-outline btn-sm" onclick="loadDispatchStatus(true)" title="구글시트 새로고침">↻</button>
+        </div>
+      </div>
+      <div id="dg-status" class="text-sm" style="margin-bottom:8px"></div>
+      <div class="card" style="padding:12px">
+        <div class="table-wrap"><div id="dg-grid"></div></div>
+      </div>
+    </div>
+
     <div id="page-settings" class="page">
       <div class="page-header">
         <h2>⚙️ 설정</h2>
@@ -1930,6 +1950,7 @@ function navigate(page) {
   if (page === 'dashboard') renderDashboard();
   if (page === 'rx-drugs') renderRxDrugs();
   if (page === 'promo-items') renderPromoItems();
+  if (page === 'dispatch-grid') renderDispatchGrid();
   if (page === 'settings') { renderRxDrugs(); renderPromoItems(); renderOrderDateList(); renderGoogleSheetStatus(); renderClinicAddresses(); }
 }
 
@@ -2362,6 +2383,47 @@ function copyPromoHistory(clinicId) {
 // 정기 배송 거래처(병행·발송전용)인데 정기 품목이 등록되지 않은 곳을 찾는다.
 // 면제 판정은 clinic.regularPromos를 보므로, 비어 있으면 종이컵·각티슈가 그대로 차감된다.
 // 구글시트 출고 자동 반영은 사용자가 누르지 않아도 돌기 때문에 조용히 잔액이 깎인다.
+// 발송 현황 표: 정기배송 거래처(병행·발송전용) × 1~12월.
+// 저장된 차감 기록(transactions)이 기준이고, 구글시트의 '발송 대기'는 그 위에 덧칠한다.
+// 시트는 아직 출고 전인 신청도 들고 있어서, 이번 달에 뭘 보내야 하는지가 표에서 바로 보인다.
+// txs·clinicList·records는 검증 스크립트에서 주입하기 위한 것 — 앱에서는 전역을 쓴다.
+function buildDispatchGrid(year, clinicList, txs, records) {
+  const shortName = n => (n || '').includes('(') ? n.split('(')[0].trim() : (n || '');
+  const targets = (clinicList || clinics)
+    .filter(c => c.dualTrack || c.noMileage)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const pending = new Map();   // `${clinicId}:${month}` → [품목]
+  (records || dispatchSyncState.records || []).forEach(r => {
+    if (r.status === 'completed') return;          // 완료분은 차감 기록으로 들어온다
+    const ym = r.requestDate || r.sentDate || '';
+    if (!ym.startsWith(String(year))) return;
+    const clinic = findClinicExactByName(r.clinicName);
+    if (!clinic) return;
+    const key = `${clinic.id}:${Number(ym.slice(5, 7))}`;
+    if (!pending.has(key)) pending.set(key, []);
+    pending.get(key).push(shortName(r.item) + (r.quantity > 1 ? ` ×${r.quantity}` : ''));
+  });
+
+  return targets.map(c => {
+    const months = Array.from({ length: 12 }, (_, i) => {
+      const m = i + 1;
+      const ym = `${year}-${String(m).padStart(2, '0')}`;
+      const items = {};
+      (txs || transactions)
+        .filter(t => t.clinicId === c.id && t.type === 'spend' && (t.date || '').startsWith(ym))
+        .flatMap(t => t.items || [])
+        .forEach(it => {
+          const n = shortName(it.name);
+          items[n] = (items[n] || 0) + Number(it.qty || 1);
+        });
+      const sent = Object.entries(items).map(([n, q]) => q > 1 ? `${n} ×${q}` : n);
+      return { month: m, ym, sent, pending: pending.get(`${c.id}:${m}`) || [] };
+    });
+    return { clinic: c, months };
+  });
+}
+
 function getRegularPromoGapRows(clinicList, txs) {
   return (clinicList || clinics)
     .filter(c => (c.dualTrack || c.noMileage) && !(c.regularPromos || []).length)
@@ -2413,6 +2475,63 @@ function getPaperCupDashboardRows() {
     completed: valid.filter(record => record.status === 'completed').sort((a, b) => b.sentDate.localeCompare(a.sentDate)),
     review: uniqueReview,
   };
+}
+
+function renderDispatchGrid() {
+  const sel = document.getElementById('dg-year');
+  const grid = document.getElementById('dg-grid');
+  if (!sel || !grid) return;
+
+  // 연도 목록은 차감 기록이 있는 해 + 올해
+  const thisYear = new Date().getFullYear();
+  const years = [...new Set([thisYear, ...transactions
+    .filter(t => t.type === 'spend' && isIsoDate(t.date))
+    .map(t => Number(t.date.slice(0, 4)))])].sort((a, b) => b - a);
+  if (!sel.options.length) {
+    sel.innerHTML = years.map(y => `<option value="${y}">${y}년</option>`).join('');
+    sel.value = String(thisYear);
+  }
+  const year = Number(sel.value) || thisYear;
+
+  document.getElementById('dg-status').innerHTML = dispatchSubtitle('구글시트 발송 대기 반영됨');
+
+  const rows = buildDispatchGrid(year, null, null, null);
+  if (!rows.length) {
+    grid.innerHTML = '<div class="text-sm" style="color:var(--gray-400);padding:12px">정기배송 거래처가 없습니다. 거래처 수정에서 마일리지 미적용 또는 병행으로 설정하세요.</div>';
+    return;
+  }
+
+  const now = new Date();
+  const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const head = `<tr><th style="text-align:left;position:sticky;left:0;background:var(--gray-50);z-index:1">거래처</th>` +
+    Array.from({ length: 12 }, (_, i) => `<th style="text-align:center;min-width:68px">${i + 1}월</th>`).join('') + '</tr>';
+
+  const body = rows.map(({ clinic: c, months }) => {
+    const kind = KIND_BADGE[clinicKind(c)];
+    const cells = months.map(mo => {
+      if (mo.sent.length) {
+        return `<td style="text-align:center;background:#059669;color:#fff;font-size:12px;font-weight:700">${escapeHtml(mo.sent.join('/'))}</td>`;
+      }
+      if (mo.pending.length) {
+        return `<td style="text-align:center;background:#f59e0b;color:#fff;font-size:12px;font-weight:700" title="구글시트 발송 대기">${escapeHtml(mo.pending.join('/'))}<div style="font-size:10px">대기</div></td>`;
+      }
+      // 지난 달인데 비어 있으면 누락 후보라 눈에 띄게 둔다
+      const past = mo.ym < currentYm;
+      return `<td style="text-align:center;background:${past ? '#fee2e2' : '#fff'};color:${past ? 'var(--danger)' : 'var(--gray-300)'}">${past ? '—' : ''}</td>`;
+    }).join('');
+    return `<tr>
+      <td style="white-space:nowrap;position:sticky;left:0;background:#fff;z-index:1">
+        <strong style="font-size:13px;cursor:pointer" onclick="openDispatchClinic('${c.id}')">${escapeHtml(c.name)}</strong>
+        <span class="hub-row-badge" style="background:${kind.bg};color:${kind.color};margin-left:4px">${kind.label}</span>
+      </td>${cells}</tr>`;
+  }).join('');
+
+  grid.innerHTML = `<table style="border-collapse:collapse;width:100%">${head}${body}</table>
+    <div class="text-sm" style="margin-top:10px;display:flex;gap:12px;flex-wrap:wrap">
+      <span><span style="display:inline-block;width:12px;height:12px;background:#059669;border-radius:2px;vertical-align:-1px"></span> 발송 완료</span>
+      <span><span style="display:inline-block;width:12px;height:12px;background:#f59e0b;border-radius:2px;vertical-align:-1px"></span> 시트 대기</span>
+      <span><span style="display:inline-block;width:12px;height:12px;background:#fee2e2;border-radius:2px;vertical-align:-1px"></span> 지난 달인데 기록 없음</span>
+    </div>`;
 }
 
 function renderDashboardWorklists() {
