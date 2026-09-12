@@ -340,8 +340,8 @@
     <div class="sidebar-logo">
       <h1>💊 마일리지 관리</h1>
       <small>거래선 처방 마일리지</small>
-      <div id="mileage-auth-status" style="margin-top:12px;font-size:11px;line-height:1.5;opacity:.85">로그인 확인 중…</div>
-      <button id="mileage-auth-btn" class="btn btn-outline btn-sm" style="margin-top:8px;width:100%;justify-content:center;display:none" onclick="handleMileageAuth()">Google 로그인</button>
+      <div class="mileage-auth-status" style="margin-top:12px;font-size:11px;line-height:1.5;opacity:.85">로그인 확인 중…</div>
+      <button class="mileage-auth-btn btn btn-outline btn-sm" style="margin-top:8px;width:100%;justify-content:center;display:none" onclick="handleMileageAuth()">Google 로그인</button>
     </div>
     <nav>
       <div class="nav-item active" data-nav="clinic-hub" onclick="navigate('clinic-hub')">
@@ -680,13 +680,13 @@
 
           <div id="gs-status" style="margin-bottom:14px"></div>
 
-          <div class="form-row" style="grid-template-columns:1fr auto;align-items:end">
-            <div class="form-group" style="margin:0">
-              <label>내 신청인 이름</label>
-              <input type="text" id="gs-applicant" placeholder="예: 홍길동"
-                style="width:100%;border:1px solid var(--gray-300);border-radius:8px;padding:8px 12px;font-size:14px">
+          <div class="card" style="background:var(--gray-50);box-shadow:none;margin-bottom:0">
+            <div class="card-title" style="margin-bottom:8px">내 계정</div>
+            <div class="mileage-auth-status" style="font-size:13px;line-height:1.5">로그인 확인 중…</div>
+            <button class="mileage-auth-btn btn btn-outline btn-sm" style="margin-top:8px;display:none" onclick="handleMileageAuth()">Google 로그인</button>
+            <div class="text-sm" style="margin-top:8px">
+              시트의 <strong>신청인</strong> 이름은 로그인 계정에서 가져옵니다. 따로 입력하지 않아도 됩니다.
             </div>
-            <button class="btn btn-primary" onclick="saveGoogleSheetSettings()">저장</button>
           </div>
 
           <details style="margin-top:16px">
@@ -1142,17 +1142,22 @@ function mileageStatePayload() {
   return { clinics, transactions, rxDrugs, promoItems, appSettings, reportSnapshots };
 }
 
+// 로그인 영역은 사이드바와 설정 화면 두 곳에 있다. 사이드바는 폰(640px 이하)에서
+// 하단 탭 바로 바뀌며 숨겨지므로, 설정 화면 사본이 없으면 폰에서 로그인할 방법이 없다.
+// 그래서 id가 아니라 클래스로 찾아 둘 다 갱신한다.
 function renderMileageAuthStatus(message, tone = '') {
-  const status = document.getElementById('mileage-auth-status');
-  const button = document.getElementById('mileage-auth-btn');
-  if (status) {
+  document.querySelectorAll('.mileage-auth-status').forEach(status => {
     status.textContent = message;
-    status.style.color = tone === 'error' ? '#fecaca' : tone === 'ok' ? '#bbf7d0' : 'rgba(255,255,255,.85)';
-  }
-  if (button) {
+    // 사이드바는 초록 배경이라 밝은 글자, 설정 화면은 흰 배경이라 진한 글자를 쓴다.
+    const onDark = !!status.closest('.sidebar');
+    status.style.color = tone === 'error' ? (onDark ? '#fecaca' : 'var(--danger)')
+      : tone === 'ok' ? (onDark ? '#bbf7d0' : 'var(--primary)')
+      : (onDark ? 'rgba(255,255,255,.85)' : 'var(--gray-500)');
+  });
+  document.querySelectorAll('.mileage-auth-btn').forEach(button => {
     button.style.display = mileageClerk ? 'inline-flex' : 'none';
     button.textContent = mileageClerk?.session ? '로그아웃' : 'Google 로그인';
-  }
+  });
 }
 
 async function mileageApiFetch(path, options = {}) {
@@ -1189,6 +1194,17 @@ async function saveMileageStateToServer() {
     mileageServerSaving = false;
     if (mileageServerDirty) queueMileageServerSave();
   }
+}
+
+// 구글시트의 '신청인' 열과 대조할 이름을 로그인 계정에서 받는다.
+// 예전에는 설정에서 직접 입력받았는데, 계정에 이미 등록된 이름이라 두 번 적을 이유가 없다.
+// 계정에 이름이 없으면(mr_profiles 미등록) 기존에 저장해 둔 값을 그대로 둔다 — 지우면
+// 종이컵 발송 목록이 통째로 비어 원인을 찾기 어려워진다.
+function applyAccountApplicantName(user) {
+  const name = String(user?.mrName || '').trim();
+  if (!name || appSettings.gsApplicant === name) return;
+  appSettings.gsApplicant = name;
+  DB.set('appSettings', appSettings);
 }
 
 async function hydrateMileageState() {
@@ -1231,6 +1247,7 @@ async function hydrateMileageState() {
         mileageServerReady = true;
         await saveMileageStateToServer();
       }
+      applyAccountApplicantName(data.user);
       renderMileageAuthStatus(`✅ ${data.user?.mrName || data.user?.name || data.user?.email || '내 계정'} 서버 데이터${hasDiff ? ` · 이 PC 기록 ${diff.localOnlyTx}건 병합됨` : ''}`, 'ok');
     } else {
       const hasLocalData = clinics.length || transactions.length;
@@ -1238,6 +1255,7 @@ async function hydrateMileageState() {
         mileageServerReady = true;
         await saveMileageStateToServer();
       }
+      applyAccountApplicantName(data.user);
       renderMileageAuthStatus('✅ 서버 저장 준비됨', 'ok');
     }
     mileageServerReady = true;
@@ -2013,13 +2031,12 @@ async function ensureGoogleToken(interactive = false) {
 function readGoogleSheetInputs() {
   appSettings.gsSheetUrl = document.getElementById('gs-sheet-url').value.trim();
   appSettings.gsRange = document.getElementById('gs-sheet-range').value.trim();
-  appSettings.gsApplicant = document.getElementById('gs-applicant').value.trim();
   DB.set('appSettings', appSettings);
 }
 
 function saveGoogleSheetSettings() {
   readGoogleSheetInputs();
-  if (!appSettings.gsApplicant) return alert('내 신청인 이름을 입력하세요.');
+  if (!appSettings.gsApplicant) return alert('로그인하면 계정에 등록된 이름으로 신청 건을 골라 봅니다. 먼저 로그인해 주세요.');
   renderGoogleSheetStatus();
   loadDispatchStatus(true)
     .then(() => alert(`✅ '${appSettings.gsApplicant}' 이름으로 저장했습니다.\n발송 현황에서 내 신청 건만 보입니다.`))
@@ -2067,7 +2084,7 @@ function renderGoogleButton() {
   const label = connected ? '✅ 내 구글 연결됨'
     : hasGoogleSheetSettings() ? '🔗 구글 다시 연결'
     : name ? `🙋 ${name}`
-    : '🙋 내 이름 설정';
+    : '🔑 로그인 필요';
   const cls = done ? 'btn btn-outline' : 'btn btn-accent';
   const btn = document.getElementById('dash-google-btn');
   if (btn) {
@@ -2083,9 +2100,7 @@ function connectGoogleFromDispatch() {
   if (hasGoogleSheetSettings()) return startGoogleLogin();
   navigate('settings');
   showSettingsTab('schedule');
-  const input = document.getElementById('gs-applicant');
-  input?.focus();
-  input?.scrollIntoView({ block: 'center' });
+  document.querySelector('.mileage-auth-btn')?.scrollIntoView({ block: 'center' });
 }
 
 function renderGoogleSheetStatus() {
@@ -2094,7 +2109,6 @@ function renderGoogleSheetStatus() {
   if (!el) return;
   document.getElementById('gs-sheet-url').value = appSettings.gsSheetUrl || '';
   document.getElementById('gs-sheet-range').value = appSettings.gsRange || '';
-  document.getElementById('gs-applicant').value = appSettings.gsApplicant || '';
 
   const name = appSettings.gsApplicant || '';
   let tone, text;
