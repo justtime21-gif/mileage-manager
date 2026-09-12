@@ -1839,7 +1839,12 @@ function renderClinicPanel(clinicId) {
     <div style="display:flex;justify-content:space-between;align-items:start;gap:12px">
       <div>
         <h2 style="margin:0">${c.name} ${c.branch ? `<span class="text-sm" style="color:var(--gray-500)">[${c.branch}]</span>` : ''}</h2>
-        <div class="text-sm" style="color:var(--gray-500);margin-top:2px">적립률 ${c.rate}%</div>
+        <div class="text-sm" style="color:var(--gray-500);margin-top:2px">적립률 ${c.rate}%${
+          (c.dualTrack || c.noMileage)
+            ? ((c.regularPromos || []).length
+                ? ` · 정기 발송(차감 면제): ${escapeHtml(c.regularPromos.join(', '))}`
+                : ' · <span style="color:var(--danger);font-weight:600">정기 품목 미등록 — 차감됩니다</span>')
+            : ''}</div>
       </div>
       <div style="display:flex;gap:6px">
         <button id="hub-back-btn" class="btn btn-outline btn-sm" style="display:none" onclick="showHubList()">← 목록</button>
@@ -2354,6 +2359,21 @@ function copyPromoHistory(clinicId) {
     .catch(() => alert('복사에 실패했습니다.'));
 }
 
+// 정기 배송 거래처(병행·발송전용)인데 정기 품목이 등록되지 않은 곳을 찾는다.
+// 면제 판정은 clinic.regularPromos를 보므로, 비어 있으면 종이컵·각티슈가 그대로 차감된다.
+// 구글시트 출고 자동 반영은 사용자가 누르지 않아도 돌기 때문에 조용히 잔액이 깎인다.
+function getRegularPromoGapRows(clinicList, txs) {
+  return (clinicList || clinics)
+    .filter(c => (c.dualTrack || c.noMileage) && !(c.regularPromos || []).length)
+    .map(c => {
+      const spent = (txs || transactions)
+        .filter(t => t.clinicId === c.id && t.type === 'spend' && t.amount > 0)
+        .reduce((sum, t) => sum + t.amount, 0);
+      return { clinic: c, spent };
+    })
+    .sort((a, b) => b.spent - a.spent || a.clinic.name.localeCompare(b.clinic.name));
+}
+
 function isIsoDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value || '');
 }
@@ -2401,6 +2421,7 @@ function renderDashboardWorklists() {
   const mileage = getMileageReviewRows();
   const cups = getPaperCupDashboardRows();
   const dispatchGaps = getRegularDispatchReviewRows();
+  const promoGaps = getRegularPromoGapRows();
   const autoSpends = dispatchSyncState.autoSpends || [];
   root.innerHTML = `
     ${renderWorklistCard({
@@ -2410,6 +2431,15 @@ function renderDashboardWorklists() {
         title: escapeHtml(row.clinic.name), detail: `${row.referenceDate} · ${row.overdueDays}일 경과`,
         action: `openMileageClinic('${row.clinic.id}')`, actionLabel: '정리'
       })), empty: '현재 정리 대상 거래처가 없습니다.'
+    })}
+    ${renderWorklistCard({
+      icon: '🚫', title: '정기 품목 미등록', tone: 'var(--danger)', count: promoGaps.length,
+      subtitle: '정기 배송 거래처인데 면제 품목이 없어 잔액이 차감되는 곳',
+      rows: promoGaps.map(row => ({
+        title: escapeHtml(row.clinic.name),
+        detail: `${row.clinic.dualTrack ? '병행' : '발송전용'} · 지금까지 ${fmt(row.spent)} 차감됨`,
+        action: `editClinic('${row.clinic.id}')`, actionLabel: '품목 등록'
+      })), empty: '정기 품목이 빠진 거래처가 없습니다.'
     })}
     ${renderWorklistCard({
       icon: '📦', title: '정기 발송 누락 의심', tone: 'var(--danger)', count: dispatchGaps.length,

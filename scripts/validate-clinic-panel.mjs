@@ -248,4 +248,32 @@ assert.deepEqual(nextRxPeriod("2026-08-01", "2026-08-20"), { start: "2026-08-21"
 // 말일로 끝나도 1일 시작이 아니면 월 단위가 아니다
 assert.deepEqual(nextRxPeriod("2026-08-05", "2026-08-31"), { start: "2026-09-01", end: "2026-10-01" });
 
-console.log("OK — 거래처 타임라인·판촉물 정렬·정기 발송 누락·서버 병합·처방 기간 검증 통과");
+// --- getRegularPromoGapRows: 정기 품목 미등록 탐지 ---
+const gapRows = new Function(`${grab(html, "getRegularPromoGapRows")}; return getRegularPromoGapRows;`)();
+
+const GAP_C = [
+  { id: "p1", name: "병행_품목없음", dualTrack: true, regularPromos: [] },
+  { id: "p2", name: "병행_품목있음", dualTrack: true, regularPromos: ["종이컵"] },
+  { id: "p3", name: "발송전용_품목없음", noMileage: true },
+  { id: "p4", name: "마일리지전용", rate: 15 },            // 정기 거래처가 아니라 대상 아님
+];
+const GAP_T = [
+  { clinicId: "p1", type: "spend", amount: 100000 },
+  { clinicId: "p1", type: "spend", amount: 16500 },
+  { clinicId: "p1", type: "spend", amount: 0 },            // 면제된 건은 금액 0이라 안 더해진다
+  { clinicId: "p3", type: "spend", amount: 5000 },
+  { clinicId: "p2", type: "spend", amount: 99999 },        // 품목이 등록돼 있으면 목록에 안 뜬다
+  { clinicId: "p1", type: "earn", amount: 777 },           // 적립은 세지 않는다
+];
+const gapsFound = gapRows(GAP_C, GAP_T);
+
+// 정기 거래처 중 품목이 비어 있는 곳만, 차감 많은 순
+assert.deepEqual(gapsFound.map(r => r.clinic.id), ["p1", "p3"]);
+assert.equal(gapsFound[0].spent, 116500);
+assert.equal(gapsFound[1].spent, 5000);
+// regularPromos가 아예 없는(undefined) 거래처도 잡는다
+assert.ok(gapsFound.some(r => r.clinic.id === "p3"));
+// 마일리지 전용은 대상이 아니다
+assert.ok(!gapsFound.some(r => r.clinic.id === "p4"));
+
+console.log("OK — 거래처 타임라인·판촉물 정렬·정기 발송 누락·서버 병합·처방 기간·정기 품목 미등록 검증 통과");
