@@ -81,6 +81,11 @@ index.html          앱 전체 (HTML + CSS + JS, 약 2,400줄)
 | `drawReport(d, canvas)` | 보고서 데이터를 캔버스에 그림 (모달·처방 입력 화면 공용) |
 | `renderRxLastReport()` | 처방 입력 화면 오른쪽에 선택 거래선의 마지막 전송 보고서 재출력 |
 | `exportData()` / `importData()` | JSON 백업 내보내기/가져오기 |
+| `crmNameKey(name)` | CRM 거래처명 대조용 키 (기존 `normalizeClinicName` 위에 의원/병원 꼬리표 제거) |
+| `matchCrmClients(clinics, rows)` | 앱 거래선 ↔ CRM 거래처 대조 (코드 우선, 이름은 유일할 때만) |
+| `matchCrmProducts(products, drugs)` | 처방통계 시트 품목 열 → 앱 처방약품 (`OCR_KEYWORDS` 재사용) |
+| `loadCrmClients()` / `applyCrmSync()` | CRM 거래처 불러오기 / 체크한 항목만 반영 |
+| `loadRxFromCrm()` | 선택 거래선의 CRM 월별 자사 처방량으로 품목 수량 채우기 |
 | `parseDispatchText(text)` | 구글시트·자유형식 발송 텍스트 파싱 |
 | `loadDispatchStatus()` | 읽기 전용 구글시트에서 종이컵 발송 상태를 동기화 |
 | `migrateBrochureDrugs()` | 처방약품 데이터 마이그레이션 (앱 로드 시 1회) |
@@ -130,3 +135,32 @@ CSS 변수는 `:root`에 정의됨:
 - `reportSnapshots[clinicId]`는 보고서 복사(전송) 시점의 `balance`, `at`, `date`와 함께 그때의 보고서 데이터(`report`)를 저장한다. 처방 입력 화면의 "마지막 보고서"는 이 `report`를 `drawReport()`로 다시 그린 것이라 이미지 자체는 저장하지 않는다. 기존 스냅샷에는 `report`가 없어 다음 전송부터 표시된다.
 - `uid()` 함수로 ID 생성. 기존 데이터의 id를 임의 변경하면 연결이 끊어짐.
 - 코드 수정 후 반드시 `save()` 호출해야 localStorage에 반영됨.
+
+## mr-crm·ERP 거래처 연동 (읽기 전용)
+
+자세한 것은 `docs/crm-erp-sync.md`. 계약만 적는다.
+
+- **앱은 CRM에 아무것도 쓰지 않는다.** `/api/crm-clients`(공유 Supabase `clients`)와
+  `/api/crm-stats`(mr-crm `/api/sheets/collected` 프록시) 둘 다 읽기 전용이다.
+- **담당자 스코핑은 `mr_name`이다**(mr-crm 규약과 동일). 이메일 → `mr_profiles.mr_name` → `clients.mr_name`.
+  **`mr_name`이 비면 409로 거절한다** — 빈 문자열로 조회하면 필터가 풀려 남의 거래처가 나간다.
+  `/api/crm-stats`는 요청한 거래처코드가 내 담당인지 한 번 더 확인한 뒤에만 mr-crm을 부른다.
+- 신원 판정은 `api/_auth.js` 한 곳이다. 새 API를 추가하면 여기를 쓴다(사본을 만들지 않는다).
+  파일명이 `_`로 시작해 Vercel이 함수로 배포하지 않는다.
+- **반영은 항상 사람이 체크한 뒤에만 한다.** 자동 반영하면 CRM의 오타·중복이 그대로 들어온다.
+- **`clinic.clientCode`가 영구 식별자다.** 상호가 바뀌어도 이걸로 따라간다. 손으로 고치지 않고
+  대조로만 붙으므로 거래선 모달에는 읽기 전용으로 보여주기만 한다.
+- **`address`는 대조하지 않는다.** 앱 `address`는 판촉물 **수령지**이고 CRM은 소재지다.
+  덮어쓰면 구글시트 발송 주소가 **에러 없이** 바뀐다. 신규 추가 때만 초깃값으로 넣는다.
+- **시트 품목 매칭은 OCR과 같은 `OCR_KEYWORDS` 표를 쓴다.** 사전을 두 벌로 만들지 마라.
+  **앱 약품에 없는 시트 열은 버리지 않고 화면에 적는다** — 조용히 빠지면 처방액이 소리 없이 작아진다.
+- 금액은 시트에 없다. 수량만 오고 **단가는 앱 처방약품 값**을 쓴다.
+- `docs/erp-clinic-sync-request.md`의 사내 ERP(전산팀) 연동은 **별건**이고 아직 대기 중이다.
+
+## 검증
+
+테스트 러너가 없어 `scripts/validate-*.mjs`가 `index.html`에서 순수 함수를 뽑아 돌린다.
+
+```bash
+npm test   # OCR · 거래처 허브 · CRM 연동 3종
+```
