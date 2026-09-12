@@ -72,6 +72,22 @@
   }
   .hub-tab-btn.active { color: var(--primary-dark); border-bottom-color: var(--primary); }
 
+  .hub-row { padding: 8px; border-radius: 6px; cursor: pointer; margin-bottom: 2px; }
+  .hub-row.active { background: var(--primary-light); }
+  .hub-row-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+  .hub-row-name { font-size: 13px; }
+  .hub-row-balance { font-size: 13px; }
+  .hub-row-sub { font-size: 12px; color: var(--gray-500); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+  .hub-row-badge { border-radius: 4px; padding: 0 4px; font-size: 11px; font-weight: 600; }
+
+  .hub-chip {
+    flex: 1 1 auto; padding: 5px 8px; border: 1px solid var(--gray-300); background: white;
+    border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--gray-600);
+    cursor: pointer; white-space: nowrap;
+  }
+  .hub-chip.active { background: var(--primary); border-color: var(--primary); color: white; }
+
+
   /* Cards */
   .card {
     background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
@@ -278,6 +294,26 @@
     th, td { padding: 7px 6px; }
     .btn-sm { padding: 3px 6px; font-size: 11px; min-height: 28px; }
 
+    /* 폰은 손가락으로 누르고 멀리서 본다. 데스크톱 크기 그대로면 작아서 읽기도 누르기도 어렵다. */
+    .hub-row { padding: 12px 10px; margin-bottom: 4px; }
+    .hub-row-name { font-size: 16px; }
+    .hub-row-balance { font-size: 16px; font-weight: 700; }
+    .hub-row-sub { font-size: 13px; gap: 6px; margin-top: 4px; }
+    .hub-row-badge { font-size: 12px; padding: 1px 6px; }
+    .hub-chip { padding: 8px 10px; font-size: 13px; }
+    #hub-search, #hub-sort { font-size: 16px !important; padding: 10px !important; }
+
+    /* 상세 패널 */
+    #hub-panel-head h2 { font-size: 20px; }
+    .hub-tab-btn { font-size: 15px; padding: 10px 14px; }
+
+    /* 하단 탭 바 — 아이콘과 글자를 키우고 높이도 늘린다 */
+    .sidebar { height: 66px; }
+    .main { padding-bottom: 78px; }
+    .nav-item { min-width: 76px; gap: 2px; }
+    .nav-icon { font-size: 22px; }
+    .nav-item span:not(.nav-icon) { font-size: 12px; }
+
     /* 거래처 허브 — 폰에서는 목록과 상세를 번갈아 보여준다.
        세로로 쌓으면 61곳 목록을 지나쳐야 상세가 나와 매번 스크롤이 길어진다. */
     #hub-grid { grid-template-columns: 1fr !important; }
@@ -323,13 +359,6 @@
     .promo-name { font-size: 12px; }
     .promo-price { font-size: 14px; }
   }
-
-  .hub-chip {
-    flex: 1 1 auto; padding: 5px 8px; border: 1px solid var(--gray-300); background: white;
-    border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--gray-600);
-    cursor: pointer; white-space: nowrap;
-  }
-  .hub-chip.active { background: var(--primary); border-color: var(--primary); color: white; }
 
   #auth-gate {
     position: fixed; inset: 0; z-index: 3000;
@@ -1755,14 +1784,14 @@ function renderClinicList() {
     const { balance } = getClinicBalance(c.id);
     const days = overdue.get(c.id);
     const active = c.id === hubState.clinicId;
-    return `<div onclick="selectHubClinic('${c.id}')" style="padding:8px;border-radius:6px;cursor:pointer;margin-bottom:2px;
-      background:${active ? 'var(--primary-light)' : 'transparent'}">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
-        <strong style="font-size:13px">${days !== undefined ? '<span style="color:var(--danger)">●</span> ' : ''}${c.name}</strong>
-        <span style="font-size:13px;color:${balance < 0 ? 'var(--danger)' : 'var(--primary)'}">${fmtNum(balance)}</span>
+    const kind = KIND_BADGE[clinicKind(c)];
+    return `<div class="hub-row ${active ? 'active' : ''}" onclick="selectHubClinic('${c.id}')">
+      <div class="hub-row-top">
+        <strong class="hub-row-name">${days !== undefined ? '<span style="color:var(--danger)">●</span> ' : ''}${c.name}</strong>
+        <span class="hub-row-balance" style="color:${balance < 0 ? 'var(--danger)' : 'var(--primary)'}">${fmtNum(balance)}</span>
       </div>
-      <div class="text-sm" style="color:var(--gray-500);display:flex;align-items:center;gap:4px;flex-wrap:wrap">
-        <span style="background:${KIND_BADGE[clinicKind(c)].bg};color:${KIND_BADGE[clinicKind(c)].color};border-radius:4px;padding:0 4px;font-size:11px;font-weight:600">${KIND_BADGE[clinicKind(c)].label}</span>
+      <div class="hub-row-sub">
+        <span class="hub-row-badge" style="background:${kind.bg};color:${kind.color}">${kind.label}</span>
         <span>${c.branch || ''}${days !== undefined ? ` · ${days}일 경과` : ''}</span>
       </div>
     </div>`;
