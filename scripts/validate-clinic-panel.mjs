@@ -300,4 +300,59 @@ assert.equal(isRegular(C, ""), false);
 // 빈 문자열이 등록돼 있어도 전부 면제되면 안 된다
 assert.equal(isRegular({ regularPromos: ["", "  "] }, "종이컵"), false);
 
-console.log("OK — 거래처 타임라인·판촉물 정렬·정기 발송 누락·서버 병합·처방 기간·정기 품목 미등록·면제 판정 검증 통과");
+// --- findMischargedRegularItems / applyRegularItemRefunds: 잘못 차감된 정기 품목 정정 ---
+const refundFns = new Function(
+  `${grab(html, "normalizeText")}\n${grab(html, "isRegularPromoForClinic")}\n` +
+  `${grab(html, "findMischargedRegularItems")}\n${grab(html, "applyRegularItemRefunds")};` +
+  `return { findMischargedRegularItems, applyRegularItemRefunds };`
+)();
+
+const RC = [
+  { id: "r1", name: "병행치과", dualTrack: true, regularPromos: ["종이컵 (1,000개)"] },
+  { id: "r2", name: "발송전용치과", noMileage: true, regularPromos: ["각티슈"] },
+  { id: "r3", name: "마일리지치과", rate: 15, regularPromos: ["종이컵"] },   // 정기 거래처가 아니다
+];
+const RT = [
+  // 시트 표기(공백 없음)로 잘못 차감된 건
+  { id: "t1", clinicId: "r1", type: "spend", amount: 16500, date: "2026-08-05",
+    items: [{ name: "종이컵(1,000개)", qty: 1, price: 16500, amount: 16500 }] },
+  // 정기 품목과 일반 품목이 섞인 건 — 일반 품목은 남아야 한다
+  { id: "t2", clinicId: "r1", type: "spend", amount: 59000, date: "2026-07-02",
+    items: [{ name: "종이컵 (1,000개)", qty: 1, price: 16500, amount: 16500 },
+            { name: "각티슈 (24개)", qty: 1, price: 42500, amount: 42500 }] },
+  // 이미 0인 건은 대상이 아니다
+  { id: "t3", clinicId: "r1", type: "spend", amount: 0, date: "2026-06-05",
+    items: [{ name: "종이컵 (1,000개)", qty: 1, price: 16500, amount: 0 }] },
+  // 발송전용 거래처의 정기 품목
+  { id: "t4", clinicId: "r2", type: "spend", amount: 42500, date: "2026-05-01",
+    items: [{ name: "각티슈 (24개)", qty: 1, price: 42500, amount: 42500 }] },
+  // 마일리지 전용 거래처는 정기 품목이 등록돼 있어도 정정 대상이 아니다
+  { id: "t5", clinicId: "r3", type: "spend", amount: 16500, date: "2026-05-01",
+    items: [{ name: "종이컵 (1,000개)", qty: 1, price: 16500, amount: 16500 }] },
+  // 적립은 건드리지 않는다
+  { id: "t6", clinicId: "r1", type: "earn", amount: 99999, date: "2026-05-01" },
+];
+
+const found = refundFns.findMischargedRegularItems(RC, RT);
+// 되돌릴 금액 많은 순. t2는 59,000짜리 차감이지만 되돌릴 것은 종이컵 16,500뿐이다.
+assert.deepEqual(found.map(r => r.tx.id), ["t4", "t1", "t2"]);
+assert.equal(found.find(r => r.tx.id === "t2").refund, 16500);   // 섞인 건은 정기 품목만
+assert.equal(found.find(r => r.tx.id === "t2").after, 42500);    // 일반 품목은 남는다
+
+refundFns.applyRegularItemRefunds(found);
+const byId = Object.fromEntries(RT.map(t => [t.id, t]));
+assert.equal(byId.t1.amount, 0);
+assert.equal(byId.t2.amount, 42500);                              // 각티슈만 남았다
+assert.equal(byId.t2.items.find(i => i.name.includes("각티슈")).amount, 42500);
+assert.equal(byId.t2.items.find(i => i.name.includes("종이컵")).amount, 0);
+assert.equal(byId.t4.amount, 0);
+assert.equal(byId.t5.amount, 16500);                              // 마일리지 전용은 그대로
+assert.equal(byId.t6.amount, 99999);                              // 적립도 그대로
+assert.ok(byId.t1.memo.includes("정기 품목 정정"));                // 추적 가능하게 표시
+// 발송 기록 자체는 남는다 — 지우면 발송 현황에서 그 달이 비어 누락처럼 보인다
+assert.equal(byId.t1.items.length, 1);
+
+// 두 번 돌려도 더 깎이지 않는다
+assert.equal(refundFns.findMischargedRegularItems(RC, RT).length, 0);
+
+console.log("OK — 거래처 타임라인·판촉물 정렬·정기 발송 누락·서버 병합·처방 기간·정기 품목 미등록·면제 판정·정기 품목 정정 검증 통과");

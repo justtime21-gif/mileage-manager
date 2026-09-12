@@ -697,6 +697,18 @@
       <!-- 탭: 데이터 관리 -->
       <div id="stab-panel-data">
         <div class="card">
+          <div class="card-title">정기 품목 정정</div>
+          <div class="text-sm" style="margin-bottom:10px;line-height:1.6">
+            병행·발송전용 거래처의 정기 발송 품목은 잔액에서 차감하지 않습니다.
+            품목 이름 표기가 달라(앱 <code>종이컵 (1,000개)</code> vs 시트 <code>종이컵(1,000개)</code>)
+            면제가 깨진 기간에 잘못 차감된 건을 찾아 금액만 0으로 되돌립니다.
+            발송 기록 자체는 지우지 않습니다.
+          </div>
+          <button class="btn btn-outline" onclick="previewRegularRefunds()">잘못 차감된 건 찾기</button>
+          <div id="refund-preview" style="margin-top:12px"></div>
+        </div>
+
+        <div class="card">
           <div style="display:flex;flex-direction:column;gap:12px">
             <div style="display:flex;align-items:center;justify-content:space-between;padding:16px;border:1px solid var(--gray-200);border-radius:10px">
               <div>
@@ -2422,6 +2434,37 @@ function buildDispatchGrid(year, clinicList, txs, records) {
     });
     return { clinic: c, months };
   });
+}
+
+// 정기 품목인데 금액이 잡힌 차감을 찾는다. 이름 표기가 달라 면제가 깨졌던 기간에
+// 쌓인 것들이다(앱 '종이컵 (1,000개)' vs 시트 '종이컵(1,000개)').
+// 한 차감 건에 정기 품목과 일반 품목이 섞여 있을 수 있으므로 품목 단위로 본다.
+function findMischargedRegularItems(clinicList, txs) {
+  const byId = new Map((clinicList || clinics).map(c => [c.id, c]));
+  return (txs || transactions)
+    .filter(t => t.type === 'spend' && Number(t.amount) > 0)
+    .map(t => {
+      const c = byId.get(t.clinicId);
+      if (!c || !(c.dualTrack || c.noMileage)) return null;
+      const wrong = (t.items || []).filter(it => Number(it.amount) > 0 && isRegularPromoForClinic(c, it.name));
+      if (!wrong.length) return null;
+      const refund = wrong.reduce((sum, it) => sum + Number(it.amount || 0), 0);
+      return { tx: t, clinic: c, items: wrong, refund, after: Number(t.amount) - refund };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.refund - a.refund);
+}
+
+// 찾은 건의 금액만 0으로 내린다. 거래를 지우지 않는다 — 발송 기록 자체는 사실이고,
+// 지우면 발송 현황 표에서 그 달이 비어 누락처럼 보인다.
+function applyRegularItemRefunds(rows) {
+  rows.forEach(({ tx, items }) => {
+    const wrongNames = new Set(items.map(it => it.name));
+    tx.items = (tx.items || []).map(it => wrongNames.has(it.name) ? { ...it, amount: 0 } : it);
+    tx.amount = tx.items.reduce((sum, it) => sum + Number(it.amount || 0), 0);
+    tx.memo = `${tx.memo ? tx.memo + ' · ' : ''}정기 품목 정정`;
+  });
+  return rows.length;
 }
 
 function getRegularPromoGapRows(clinicList, txs) {
@@ -4441,6 +4484,50 @@ async function copyReportImage() {
 
 
 // ===== EXPORT / IMPORT =====
+// 돈이 걸린 데이터라 자동으로 밀어붙이지 않는다. 전부 보여주고 확인받은 뒤에만 반영한다.
+function previewRegularRefunds() {
+  const root = document.getElementById('refund-preview');
+  const rows = findMischargedRegularItems();
+  if (!rows.length) {
+    root.innerHTML = '<div class="alert alert-success" style="margin:0">잘못 차감된 정기 품목이 없습니다.</div>';
+    return;
+  }
+  const total = rows.reduce((sum, r) => sum + r.refund, 0);
+  const byClinic = {};
+  rows.forEach(r => { byClinic[r.clinic.name] = (byClinic[r.clinic.name] || 0) + r.refund; });
+
+  root.innerHTML = `
+    <div class="alert" style="margin:0 0 10px;background:#fff7ed;color:#b45309;border:1px solid #fed7aa">
+      <strong>${rows.length}건 · 합계 ${fmt(total)}</strong>이 잘못 차감됐습니다. 되돌리면 그만큼 잔액이 올라갑니다.
+    </div>
+    <div class="table-wrap" style="max-height:320px;overflow-y:auto">
+      <table><tr><th>거래처</th><th>날짜</th><th>품목</th><th class="td-num">되돌릴 금액</th></tr>
+      ${rows.map(r => `<tr>
+        <td>${escapeHtml(r.clinic.name)}</td>
+        <td>${r.tx.date || ''}</td>
+        <td>${escapeHtml(r.items.map(i => i.name).join(', '))}</td>
+        <td class="td-num" style="color:var(--primary);font-weight:600">+${fmt(r.refund)}</td>
+      </tr>`).join('')}</table>
+    </div>
+    <div class="text-sm" style="margin:10px 0">거래처별 합계 — ${Object.entries(byClinic)
+      .sort((a, b) => b[1] - a[1]).map(([n, v]) => `${escapeHtml(n)} +${fmt(v)}`).join(' · ')}</div>
+    <button class="btn btn-primary" onclick="applyRegularRefunds()">위 ${rows.length}건 정정하기</button>`;
+}
+
+function applyRegularRefunds() {
+  const rows = findMischargedRegularItems();
+  if (!rows.length) return previewRegularRefunds();
+  const total = rows.reduce((sum, r) => sum + r.refund, 0);
+  if (!confirm(`${rows.length}건, 합계 ${fmt(total)}을 되돌립니다.\n\n되돌리기 전에 설정에서 데이터를 내보내 두는 것을 권합니다.\n계속할까요?`)) return;
+
+  applyRegularItemRefunds(rows);
+  save();
+  renderDashboard();
+  if (document.querySelector('#page-clinic-hub.active')) { renderClinicList(); renderClinicPanel(hubState.clinicId); }
+  previewRegularRefunds();
+  alert(`✅ ${rows.length}건 정정했습니다. 합계 ${fmt(total)}이 잔액으로 돌아갔습니다.`);
+}
+
 function exportData() {
   const data = {
     clinics: JSON.parse(localStorage.getItem('mileage_clinics') || '[]'),
