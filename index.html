@@ -366,7 +366,6 @@
                     </div>
                     <div id="prev-rx-bar" style="display:none;margin-top:8px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;display:none;align-items:center;justify-content:space-between;gap:8px">
                       <span id="prev-rx-label" style="font-size:13px;color:#166534"></span>
-                      <button class="btn btn-sm" onclick="loadPrevRx()" style="background:#16a34a;color:white;white-space:nowrap;flex-shrink:0">이전 처방 불러오기</button>
                     </div>
                     <button id="crm-rx-btn" class="btn btn-outline btn-sm" style="margin-top:8px;width:100%" onclick="loadRxFromCrm()">
                       📥 CRM에서 처방량 불러오기
@@ -433,10 +432,7 @@
               </div>
 
               <div class="card">
-                <div class="card-title flex justify-between items-center">
-                  <span>마지막 보고서</span>
-                  <button class="btn btn-outline btn-sm" id="rx-report-open-btn" style="display:none" onclick="showHubTab('report')">보고서 열기</button>
-                </div>
+                <div class="card-title">마지막 보고서</div>
                 <div id="rx-report-meta" class="text-sm" style="margin-bottom:10px;color:var(--gray-500)">거래선을 선택하면 마지막으로 보낸 보고서가 표시됩니다.</div>
                 <div id="rx-report-wrap" style="display:none;border:1px solid var(--gray-200);border-radius:8px;overflow:hidden;background:white">
                   <canvas id="rx-report-canvas" style="width:100%;display:block"></canvas>
@@ -2652,22 +2648,21 @@ function showPrevRxBtn() {
   document.getElementById('prev-rx-label').textContent =
     `📋 이전: ${period} | ${prev.items.map(i => `${i.name.split('(')[0]} ×${fmtNum(i.qty||1)}`).join(', ')}`;
   bar.style.display = 'flex';
+
+  // 거래처가 이미 정해져 있으니 그 거래처가 늘 받는 품목 줄을 미리 깔아 둔다.
+  // 수량은 비워 두므로 지난달 수량이 잘못 저장될 일은 없다.
+  // 사용자가 이미 뭔가 입력한 뒤라면 건드리지 않는다.
+  if (!rxItems.some(r => r.name || r.qty)) applyPrevRxItems(prev);
 }
 
-function loadPrevRx() {
-  const clinicId = document.getElementById('rx-clinic').value;
-  if (!clinicId) return;
-  const prev = transactions
-    .filter(t => t.clinicId === clinicId && t.type === 'earn')
-    .sort((a, b) => b.createdAt - a.createdAt)[0];
-  if (!prev || !(prev.items || []).length) return;
-  if (!confirm(`이전 처방 품목을 불러옵니다.\n현재 입력 내용이 초기화됩니다.\n계속하시겠습니까?`)) return;
-  rxItems = prev.items.map(it => ({
+// 이전 처방의 품목·단가만 가져온다. 처방량은 비운다.
+function applyPrevRxItems(prev) {
+  rxItems = (prev.items || []).map(it => ({
     id: uid(),
     drugId: it.drugId || '',
     name: it.name || '',
     qty: '',
-    price: String(it.price || '')
+    price: String(it.price || ''),
   }));
   if (!rxItems.length) { addRxItem(); addRxItem(); addRxItem(); }
   renderRxItemRows();
@@ -3883,11 +3878,9 @@ function renderRxLastReport() {
   const clinicId = document.getElementById('rx-clinic')?.value || '';
   const meta = document.getElementById('rx-report-meta');
   const wrap = document.getElementById('rx-report-wrap');
-  const openBtn = document.getElementById('rx-report-open-btn');
-  if (!meta || !wrap || !openBtn) return;
+  if (!meta || !wrap) return;
 
   wrap.style.display = 'none';
-  openBtn.style.display = clinicId ? '' : 'none';
 
   if (!clinicId) { meta.textContent = '거래선을 선택하면 마지막으로 보낸 보고서가 표시됩니다.'; return; }
 
