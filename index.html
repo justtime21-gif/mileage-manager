@@ -2160,7 +2160,7 @@ function renderGoogleSheetStatus() {
     text = `✅ 공용 시트에서 <strong>${escapeHtml(name)}</strong> 님이 신청한 행만 봅니다.`;
   } else {
     tone = 'background:#fff7ed;color:#b45309;border:1px solid #fed7aa';
-    text = '⚠️ 내 신청인 이름을 입력하세요. 지금은 시트에 설정된 기본 담당자 행이 보입니다.';
+    text = '⚠️ 계정에 담당자 이름이 없어 시트 기본 담당자 행이 보입니다. 로그인 상태를 확인해 주세요.';
   }
   el.innerHTML = `<div class="alert" style="margin:0;${tone};font-size:13px">${text}</div>`;
 }
