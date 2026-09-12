@@ -324,6 +324,17 @@
     .promo-price { font-size: 14px; }
   }
 
+  #auth-gate {
+    position: fixed; inset: 0; z-index: 3000;
+    background: var(--gray-50); display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  #auth-gate.hidden { display: none; }
+  .auth-gate-card {
+    background: white; border-radius: 16px; padding: 32px 28px;
+    width: 100%; max-width: 360px; text-align: center;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.12);
+  }
+
   .stab { background:none; border:none; border-bottom:3px solid transparent; padding:10px 18px; font-size:14px; font-weight:600; color:var(--gray-500); cursor:pointer; white-space:nowrap; margin-bottom:-2px; transition:color .15s,border-color .15s; }
   .stab:hover { color:var(--gray-800); }
   .stab.active { color:var(--primary); border-bottom-color:var(--primary); }
@@ -334,6 +345,25 @@
 </style>
 </head>
 <body>
+<!-- 로그인 전에는 앱을 아예 가린다. 데이터가 계정에 붙어 있으므로 로그인 없이 보이는 화면은
+     그 브라우저의 옛 localStorage뿐이라, 서버 데이터와 헷갈릴 여지를 없앤다. -->
+<div id="auth-gate">
+  <div class="auth-gate-card">
+    <div style="font-size:40px;margin-bottom:8px">💊</div>
+    <h1 style="font-size:18px;font-weight:700;margin-bottom:4px">거래선 마일리지 관리</h1>
+    <p class="text-sm" style="margin-bottom:20px">거래선 처방 마일리지</p>
+    <div class="mileage-auth-status" style="font-size:13px;line-height:1.6;margin-bottom:16px">로그인 확인 중…</div>
+    <button class="mileage-auth-btn btn btn-primary" style="width:100%;justify-content:center;display:none" onclick="handleMileageAuth()">Google 로그인</button>
+    <details style="margin-top:20px;text-align:left">
+      <summary class="text-sm" style="cursor:pointer">로그인이 안 되나요?</summary>
+      <div class="text-sm" style="margin-top:8px;line-height:1.6">
+        이 브라우저에 남아 있는 데이터를 파일로 내려받을 수 있습니다.
+        로그인이 복구되면 설정 → 데이터 가져오기로 되돌릴 수 있습니다.
+        <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="exportData()">데이터 내보내기</button>
+      </div>
+    </details>
+  </div>
+</div>
 <div class="app">
   <!-- Sidebar -->
   <aside class="sidebar">
@@ -1145,7 +1175,14 @@ function mileageStatePayload() {
 // 로그인 영역은 사이드바와 설정 화면 두 곳에 있다. 사이드바는 폰(640px 이하)에서
 // 하단 탭 바로 바뀌며 숨겨지므로, 설정 화면 사본이 없으면 폰에서 로그인할 방법이 없다.
 // 그래서 id가 아니라 클래스로 찾아 둘 다 갱신한다.
+// 로그인 전에는 앱을 가린다. Clerk 로딩에 실패하면 게이트에 그 사유가 그대로 보이므로
+// 사용자가 멈춘 이유를 알 수 있고, 그 안의 '데이터 내보내기'로 이 브라우저 데이터는 꺼낼 수 있다.
+function renderAuthGate() {
+  document.getElementById('auth-gate')?.classList.toggle('hidden', !!mileageClerk?.session);
+}
+
 function renderMileageAuthStatus(message, tone = '') {
+  renderAuthGate();
   document.querySelectorAll('.mileage-auth-status').forEach(status => {
     status.textContent = message;
     // 사이드바는 초록 배경이라 밝은 글자, 설정 화면은 흰 배경이라 진한 글자를 쓴다.
