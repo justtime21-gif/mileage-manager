@@ -3,7 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" href="data:,">
+<meta name="theme-color" content="#1a6b3c">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<!-- iOS는 매니페스트의 display를 안 보고 이 두 줄로 전체화면 여부를 정한다 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="마일리지">
 <title>거래선 마일리지 관리</title>
 <style>
   :root {
@@ -4795,6 +4802,13 @@ renderClinicHub();
 prepareGoogleClient().catch(() => {});
 // ClerkJS is loaded with `defer`; wait for the browser's load event so window.Clerk exists.
 window.addEventListener('load', () => initMileageAuth());
+
+// 홈 화면 추가용 서비스워커. file:// 로 열었거나 등록에 실패해도 앱은 그대로 돌아야 한다.
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(err => console.warn('[sw]', err));
+  });
+}
 </script>
 
 
