@@ -434,7 +434,7 @@
           <select id="hub-sort" onchange="hubState.sort=this.value; renderClinicList()"
             style="width:100%;padding:6px;border:1px solid var(--gray-300);border-radius:6px;margin-bottom:8px">
             <option value="name">이름순</option>
-            <option value="balance">잔액순</option>
+            <option value="balance" selected>잔액순</option>
             <option value="overdue">오래된순</option>
           </select>
           <div id="hub-kind-chips" style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap"></div>
@@ -1727,7 +1727,7 @@ const HUB_TABS = {
   report: { workarea: 'report-workarea', select: 'report-clinic', onMount: () => renderReport() },
 };
 
-let hubState = { clinicId: null, tab: 'summary', filter: '', sort: 'name', kind: 'all' };
+let hubState = { clinicId: null, tab: 'summary', filter: '', sort: 'balance', kind: 'all' };
 
 function renderClinicHub() {
   renderClinicList();
