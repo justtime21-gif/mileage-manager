@@ -2541,7 +2541,11 @@ function buildAddressSuggestions(clinicList, records) {
     if (!addr) return;
     const dest = normalizeText(r.destination || '');
     const name = normalizeText(r.clinicName || '');
-    if (dest && name && dest !== name) return;          // 사무실 배송 행은 제외
+    if (!name) return;                                  // 거래처가 없는 행(본사 배송 등)
+    if (dest && dest !== name) return;                  // 수령지가 다르면 사무실 배송이다
+    // 수령지 열을 못 읽는 시트도 있다. 그때는 주소에 거래처명이 들어 있는지로 한 번 더 거른다
+    // (실측: '서울특별시 은평구 … 10층 살림치과'처럼 끝에 상호가 붙는다).
+    if (!dest && !normalizeText(addr).includes(name)) return;
     const clinic = (clinicList || clinics).find(c => normalizeText(c.name) === name);
     if (!clinic) return;
     const prev = best.get(clinic.id);
