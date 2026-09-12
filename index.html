@@ -3563,7 +3563,8 @@ function removeCustomRedeem(id) {
 function calcRedeemTotal() {
   const clinicId = document.getElementById('redeem-clinic').value;
   const c = clinicId ? clinics.find(x => x.id === clinicId) : null;
-  const regularPromos = (c?.dualTrack && c?.regularPromos) ? c.regularPromos : [];
+  // 병행 거래처만 면제한다. 발송전용은 어차피 전액 차감 없음이라 아래에서 따로 처리된다.
+  const exempt = it => !!c?.dualTrack && isRegularPromoForClinic(c, it);
 
   let total = 0, deductTotal = 0;
   Object.entries(selectedPromoItems).forEach(([id, qty]) => {
@@ -3571,8 +3572,7 @@ function calcRedeemTotal() {
     if (!p) return;
     const amount = p.price * qty;
     total += amount;
-    const isRegular = regularPromos.some(rp => p.name.includes(rp) || rp.includes(p.name));
-    if (!isRegular) deductTotal += amount;
+    if (!exempt(p.name)) deductTotal += amount;
   });
   customRedeemItems.forEach(item => {
     const amount = parseFloat(item.price) || 0;
@@ -3631,9 +3631,9 @@ function saveRedeem() {
     transactions.push({ id: uid(), clinicId, type: 'spend', amount: 0, items, date, memo, createdAt: Date.now() });
   } else if (c?.dualTrack) {
     // 정기 발송 품목(regularPromos)은 amount: 0, 나머지는 정상 차감
-    const regularPromos = c.regularPromos || [];
+    // 판정은 isRegularPromoForClinic 한 곳에서만 한다. 두 벌로 두면 또 어긋난다.
     const adjustedItems = items.map(it => {
-      const isRegular = regularPromos.some(rp => it.name.includes(rp) || rp.includes(it.name));
+      const isRegular = isRegularPromoForClinic(c, it.name);
       return isRegular ? { ...it, amount: 0 } : it;
     });
     const deductTotal = adjustedItems.reduce((s, it) => s + it.amount, 0);
@@ -4524,8 +4524,16 @@ function syncSheetSpends() {
   return created;
 }
 
+// 정기 발송 면제 판정. 이름을 그대로 비교하면 안 된다 — 앱은 '종이컵 (1,000개)',
+// 구글시트는 '종이컵(1,000개)'처럼 괄호 앞 공백이 달라 양방향 includes가 모두 실패하고
+// 면제 대상이 그대로 차감됐다. 공백·괄호·쉼표를 지운 뒤 비교한다.
 function isRegularPromoForClinic(clinic, itemName) {
-  return (clinic?.regularPromos || []).some(name => itemName.includes(name) || name.includes(itemName));
+  const item = normalizeText(itemName || '');
+  if (!item) return false;
+  return (clinic?.regularPromos || []).some(name => {
+    const key = normalizeText(name || '');
+    return key && (item.includes(key) || key.includes(item));
+  });
 }
 
 function showEarnDetail(txId) {

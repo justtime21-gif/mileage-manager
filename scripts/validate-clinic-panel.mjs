@@ -276,4 +276,28 @@ assert.ok(gapsFound.some(r => r.clinic.id === "p3"));
 // 마일리지 전용은 대상이 아니다
 assert.ok(!gapsFound.some(r => r.clinic.id === "p4"));
 
-console.log("OK — 거래처 타임라인·판촉물 정렬·정기 발송 누락·서버 병합·처방 기간·정기 품목 미등록 검증 통과");
+// --- isRegularPromoForClinic: 앱과 구글시트의 이름 표기가 달라도 면제되는가 ---
+const isRegular = new Function(
+  `${grab(html, "normalizeText")}\n${grab(html, "isRegularPromoForClinic")}; return isRegularPromoForClinic;`
+)();
+
+// 실제로 새던 조합: 앱은 '종이컵 (1,000개)', 시트는 '종이컵(1,000개)' — 괄호 앞 공백 차이
+const C = { regularPromos: ["종이컵 (1,000개)"] };
+assert.equal(isRegular(C, "종이컵(1,000개)"), true);      // 시트 표기
+assert.equal(isRegular(C, "종이컵 (1,000개)"), true);     // 앱 표기
+assert.equal(isRegular(C, "종이컵 (1000개)"), true);      // 쉼표 없는 표기
+assert.equal(isRegular(C, "각티슈 (24개)"), false);       // 등록 안 된 품목은 차감된다
+
+// 품목명만 등록해 둔 경우도 걸린다
+const C2 = { regularPromos: ["종이컵"] };
+assert.equal(isRegular(C2, "종이컵(1,000개)"), true);
+assert.equal(isRegular(C2, "물티슈 (100매)"), false);
+
+// 정기 품목이 없거나 거래처가 없으면 면제하지 않는다
+assert.equal(isRegular({ regularPromos: [] }, "종이컵"), false);
+assert.equal(isRegular(null, "종이컵"), false);
+assert.equal(isRegular(C, ""), false);
+// 빈 문자열이 등록돼 있어도 전부 면제되면 안 된다
+assert.equal(isRegular({ regularPromos: ["", "  "] }, "종이컵"), false);
+
+console.log("OK — 거래처 타임라인·판촉물 정렬·정기 발송 누락·서버 병합·처방 기간·정기 품목 미등록·면제 판정 검증 통과");
