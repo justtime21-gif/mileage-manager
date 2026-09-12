@@ -1620,7 +1620,7 @@ function executeDelete() {
 // 토글(.hub-pane.active)만 하고, 보이는 탭의 select 값을 현재 거래처로 맞춘다.
 const HUB_TABS = {
   rx:     { workarea: 'rx-workarea',     select: 'rx-clinic',     onMount: () => { renderRxClinicSelect(); onRxClinicChange(); } },
-  redeem: { workarea: 'redeem-workarea', select: 'redeem-clinic', onMount: () => { renderRedeemClinicSelect(); renderRedeemPromoGrid(); updateRedeemBalance(); renderRedeemHistory(); } },
+  redeem: { workarea: 'redeem-workarea', select: 'redeem-clinic', onMount: () => { renderRedeemClinicSelect(); renderRedeemPromoGrid(); updateRedeemBalance(); } },
   report: { workarea: 'report-workarea', select: 'report-clinic', onMount: () => renderReport() },
 };
 
@@ -3221,7 +3221,10 @@ function updateRedeemBalance() {
   const noDeduct = c.noMileage || c.dualTrack;
   const label = c.noMileage ? ' 〔마일리지 미적용〕' : c.dualTrack ? ' 〔정기 판촉물 — 잔액 차감 없음〕' : '';
   document.getElementById('redeem-clinic-name').textContent = c.name + label;
+  // 이력도 거래처별이라 같이 다시 그린다. showHubTab은 onMount를 부른 뒤에야
+  // select에 값을 넣으므로, onMount에서 그리면 거래처가 비어 전체가 나온다.
   renderRedeemPromoGrid();
+  renderRedeemHistory();
   const balEl = document.getElementById('redeem-balance-display');
   if (noDeduct) {
     balEl.textContent = c.noMileage ? '발송 기록만 저장 (잔액 차감 없음)' : `잔액: ${fmt(balance)} (판촉물 발송은 차감 없음)`;
