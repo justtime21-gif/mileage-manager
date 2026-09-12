@@ -51,12 +51,19 @@ mr-crm을 호출한다. 코드를 알면 남의 거래처 통계를 읽는 길�
 
 ## 환경변수
 
-| 변수 | 쓰는 곳 |
-|---|---|
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`·`CLERK_SECRET_KEY` | 로그인 (mr-crm과 같은 Clerk 앱) |
-| `NEXT_PUBLIC_SUPABASE_URL`·`SUPABASE_SERVICE_ROLE_KEY` | 공유 Supabase 읽기 (mr-crm과 같은 프로젝트) |
-| `MR_CRM_BASE_URL` | mr-crm 배포 주소 |
-| `MR_CRM_SYNC_KEY` | mr-crm의 `SYNC_API_KEY`와 같은 값 |
+| 변수 | 쓰는 곳 | 이미 있나 |
+|---|---|---|
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`·`CLERK_SECRET_KEY` | 로그인 (mr-crm과 같은 Clerk 앱) | **있음** (서버 저장이 이미 쓴다) |
+| `NEXT_PUBLIC_SUPABASE_URL`·`SUPABASE_SERVICE_ROLE_KEY` | 공유 Supabase 읽기 (CRM과 같은 프로젝트) | **있음** (`mileage_states`가 이미 쓴다) |
+| `SYNC_API_KEY` | mr-crm 서버간 인증. mr-crm 배포의 같은 이름 값과 같아야 한다 | **새로 필요** |
+| `MR_CRM_BASE_URL` | mr-crm 배포 주소. 생략하면 `https://mr-crm-hq8c.vercel.app` | 선택 |
+
+**거래처 대조는 새 환경변수 없이 바로 된다.** `mileage_states`가 이미 CRM과 같은 Supabase를 읽고
+있어 `clients`도 같은 자격으로 읽힌다. 새로 필요한 것은 처방통계 쪽 `SYNC_API_KEY` 하나뿐이고,
+없으면 그 버튼만 503으로 안내하고 대조는 그대로 동작한다.
+
+`SYNC_API_KEY`·`MR_CRM_BASE_URL`이라는 이름은 mr-sales-plan `api/sync-collected.js`, mr-team-erp
+`lib/crm-url.js`와 같다. **같은 키를 저장소마다 다른 이름으로 넣게 하면 언젠가 틀린다.**
 
 **서비스 롤 키와 sync 키는 서버리스 함수 환경변수에만 둔다.** 브라우저로 내려보내지 않는다.
 

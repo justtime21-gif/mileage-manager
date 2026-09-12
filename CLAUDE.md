@@ -155,6 +155,10 @@ CSS 변수는 `:root`에 정의됨:
 - **시트 품목 매칭은 OCR과 같은 `OCR_KEYWORDS` 표를 쓴다.** 사전을 두 벌로 만들지 마라.
   **앱 약품에 없는 시트 열은 버리지 않고 화면에 적는다** — 조용히 빠지면 처방액이 소리 없이 작아진다.
 - 금액은 시트에 없다. 수량만 오고 **단가는 앱 처방약품 값**을 쓴다.
+- **거래처 대조는 새 환경변수 없이 된다.** `mileage_states`가 이미 CRM과 같은 Supabase를 쓰므로
+  `clients`도 같은 자격으로 읽힌다. 처방통계 쪽만 `SYNC_API_KEY`가 새로 필요하고, 없으면 그 버튼만
+  503으로 안내하고 대조는 그대로 동작한다. 이름은 mr-sales-plan·mr-team-erp와 같게 둔다
+  (`SYNC_API_KEY`·`MR_CRM_BASE_URL`, 기본 주소 `https://mr-crm-hq8c.vercel.app`).
 - `docs/erp-clinic-sync-request.md`의 사내 ERP(전산팀) 연동은 **별건**이고 아직 대기 중이다.
 
 ## 검증

@@ -3,9 +3,13 @@ import { db, getUser, isConfigured } from './_auth.js';
 
 const MAX_MONTHS = 4;
 
+// 기본 주소는 ERP `lib/crm-url.js`·슬랙 리포트가 쓰는 값과 같다. 환경변수 이름도
+// mr-sales-plan `api/sync-collected.js`와 같게 둔다 — 같은 키를 저장소마다 다른 이름으로 넣게 하면 틀린다.
+const DEFAULT_CRM_URL = 'https://mr-crm-hq8c.vercel.app';
+
 function crmConfig() {
-  const base = String(process.env.MR_CRM_BASE_URL || '').trim().replace(/\/+$/, '');
-  const key = String(process.env.MR_CRM_SYNC_KEY || '').trim();
+  const base = String(process.env.MR_CRM_BASE_URL || DEFAULT_CRM_URL).trim().replace(/\/+$/, '');
+  const key = String(process.env.SYNC_API_KEY || '').trim();
   return base && key ? { base, key } : null;
 }
 
@@ -13,7 +17,7 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
   if (!isConfigured()) return res.status(503).json({ error: 'CRM 연동이 설정되지 않았습니다.' });
   const crm = crmConfig();
-  if (!crm) return res.status(503).json({ error: '처방통계 연동이 설정되지 않았습니다. (MR_CRM_BASE_URL·MR_CRM_SYNC_KEY)' });
+  if (!crm) return res.status(503).json({ error: '처방통계 연동이 설정되지 않았습니다. Vercel 환경변수 SYNC_API_KEY(mr-crm과 같은 값)를 넣어 주세요.' });
 
   try {
     const user = await getUser(req);
