@@ -58,6 +58,7 @@
      오른쪽 칼럼을 밀어내 1300px 아래에서 비율이 무너지고 1130px 아래에선 가로 스크롤이 생긴다. */
   .hub-pane.active.workarea-2col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
   @media (max-width: 1200px) { .hub-pane.active.workarea-2col { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 900px) { #hub-grid { grid-template-columns: 1fr !important; } }
   .hub-tab-btn {
     padding: 8px 14px; border: none; background: none; cursor: pointer;
     font-weight: 600; font-size: 14px; color: var(--gray-500); border-bottom: 2px solid transparent;
@@ -270,6 +271,26 @@
     th, td { padding: 7px 6px; }
     .btn-sm { padding: 3px 6px; font-size: 11px; min-height: 28px; }
 
+    /* 거래처 허브 — 폰에서는 목록과 상세를 번갈아 보여준다.
+       세로로 쌓으면 61곳 목록을 지나쳐야 상세가 나와 매번 스크롤이 길어진다. */
+    #hub-grid { grid-template-columns: 1fr !important; }
+    #hub-grid.hub-detail #hub-list-card { display: none; }
+    #hub-grid:not(.hub-detail) #hub-panel { display: none; }
+    #hub-back-btn { display: inline-flex !important; }
+    #hub-clinic-list { max-height: none !important; }
+
+    /* 처방 품목 행 — 고정 px 컬럼(3fr 70px 90px 100px auto)이 폰 폭을 넘는다.
+       약품 선택이 한 줄을 차지하고 수량·단가·금액·삭제가 그 아래 한 줄에 온다. */
+    .rx-items-header { display: none; }
+    .rx-item-row {
+      grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+      gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--gray-100);
+    }
+    .rx-item-row > *:first-child { grid-column: 1 / -1; }
+
+    /* 잔액·적립·차감 요약이 한 줄에 안 들어가면 접는다 */
+    #hub-panel-head > div { flex-wrap: wrap; }
+
     /* 폼 */
     .form-row { grid-template-columns: 1fr !important; gap: 10px; }
     input[type="text"], input[type="number"], input[type="date"],
@@ -332,8 +353,8 @@
   <main class="main">
 
     <div id="page-clinic-hub" class="page active">
-      <div style="display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start">
-        <div class="card" style="padding:12px">
+      <div id="hub-grid" style="display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start">
+        <div id="hub-list-card" class="card" style="padding:12px">
           <button class="btn btn-primary btn-sm" style="width:100%;margin-bottom:8px" onclick="openClinicModal()">+ 거래처 추가</button>
           <input id="hub-search" placeholder="거래처 검색" oninput="hubState.filter=this.value; renderClinicList()"
             style="width:100%;padding:8px;border:1px solid var(--gray-300);border-radius:6px;margin-bottom:8px">
@@ -1640,7 +1661,14 @@ function renderClinicList() {
   }).join('') || '<div class="text-sm" style="color:var(--gray-400);padding:8px">거래처가 없습니다.</div>';
 }
 
+// 폰에서는 목록과 상세가 한 화면에 같이 안 들어간다. hub-detail 클래스로 무엇을 보일지 정하고,
+// 데스크톱에서는 이 클래스에 걸린 규칙이 없어 아무 영향이 없다.
+function showHubList() {
+  document.getElementById('hub-grid')?.classList.remove('hub-detail');
+}
+
 function selectHubClinic(clinicId) {
+  document.getElementById('hub-grid')?.classList.add('hub-detail');
   hubState.clinicId = clinicId;
   hubState.tab = 'summary';
   renderClinicList();
@@ -1677,7 +1705,8 @@ function renderClinicPanel(clinicId) {
         <div class="text-sm" style="color:var(--gray-500);margin-top:2px">적립률 ${c.rate}%</div>
       </div>
       <div style="display:flex;gap:6px">
-        <button class="btn btn-outline btn-sm" onclick="copyPromoHistory('${c.id}')" title="발송 이력을 카톡 붙여넣기용 텍스트로 복사">발송 이력 복사</button>
+        <button id="hub-back-btn" class="btn btn-outline btn-sm" style="display:none" onclick="showHubList()">← 목록</button>
+      <button class="btn btn-outline btn-sm" onclick="copyPromoHistory('${c.id}')" title="발송 이력을 카톡 붙여넣기용 텍스트로 복사">발송 이력 복사</button>
       <button class="btn btn-outline btn-sm" onclick="editClinic('${c.id}')">수정</button>
         <button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="deleteClinic('${c.id}')">삭제</button>
       </div>
