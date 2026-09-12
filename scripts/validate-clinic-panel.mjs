@@ -229,4 +229,23 @@ assert.deepEqual(onlyLocal.transactions.map(t => t.id).sort(), ["t1", "t9"]);
 const onlyServer = mergeFns.mergeMileageState({}, SERVER);
 assert.deepEqual(onlyServer.transactions.map(t => t.id).sort(), ["t1", "t2"]);
 
-console.log("OK — 거래처 타임라인·판촉물 정렬·정기 발송 누락·서버 병합 검증 통과");
+// --- nextRxPeriod: 처방 기간 자동 이어붙이기 ---
+const nextRxPeriod = new Function(`${grab(html, "nextRxPeriod")}; return nextRxPeriod;`)();
+
+// 월 단위(1일~말일)로 받아 온 거래처는 다음 달 통째로
+assert.deepEqual(nextRxPeriod("2026-08-01", "2026-08-31"), { start: "2026-09-01", end: "2026-09-30" });
+assert.deepEqual(nextRxPeriod("2026-09-01", "2026-09-30"), { start: "2026-10-01", end: "2026-10-31" });
+// 2월(윤년 아님)과 연말 넘김
+assert.deepEqual(nextRxPeriod("2026-01-01", "2026-01-31"), { start: "2026-02-01", end: "2026-02-28" });
+assert.deepEqual(nextRxPeriod("2026-12-01", "2026-12-31"), { start: "2027-01-01", end: "2027-01-31" });
+// 윤년 2월
+assert.deepEqual(nextRxPeriod("2028-01-01", "2028-01-31"), { start: "2028-02-01", end: "2028-02-29" });
+
+// 월 단위가 아니면 다음날부터 30일
+assert.deepEqual(nextRxPeriod("2026-05-26", "2026-06-27"), { start: "2026-06-28", end: "2026-07-28" });
+// 1일 시작이어도 말일로 안 끝나면 월 단위가 아니다
+assert.deepEqual(nextRxPeriod("2026-08-01", "2026-08-20"), { start: "2026-08-21", end: "2026-09-20" });
+// 말일로 끝나도 1일 시작이 아니면 월 단위가 아니다
+assert.deepEqual(nextRxPeriod("2026-08-05", "2026-08-31"), { start: "2026-09-01", end: "2026-10-01" });
+
+console.log("OK — 거래처 타임라인·판촉물 정렬·정기 발송 누락·서버 병합·처방 기간 검증 통과");
