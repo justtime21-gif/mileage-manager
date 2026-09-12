@@ -669,10 +669,12 @@
         </div>
         <div class="flex gap-8 items-center">
           <select id="dg-year" onchange="renderDispatchGrid()" style="padding:8px;border:1px solid var(--gray-300);border-radius:8px"></select>
+          <button class="btn btn-primary btn-sm" onclick="openRequestForm()">+ 신청서 작성</button>
           <button class="btn btn-outline btn-sm" onclick="loadDispatchStatus(true)" title="구글시트 새로고침">↻</button>
         </div>
       </div>
       <div id="dg-status" class="text-sm" style="margin-bottom:8px"></div>
+      <div id="dg-request" style="display:none"></div>
       <div class="card" style="padding:12px">
         <div class="table-wrap"><div id="dg-grid"></div></div>
       </div>
@@ -2467,6 +2469,46 @@ function applyRegularItemRefunds(rows) {
   return rows.length;
 }
 
+// ===== 판촉물 신청서 (구글시트 붙여넣기용) =====
+// 시트 열 순서 그대로. 우리가 안 채우는 칸도 자리를 비워 둬야 붙여넣을 때 열이 안 밀린다.
+const SHEET_COLUMNS = ['월', '영업본부', '요양기관명', '신청인', '항목', '연락처', '품목코드',
+  '발주수량', '단가', '금액', '수령지(출고지점)', '주소', '출고 상황'];
+
+// 시트의 항목 칸은 드롭다운이라 글자가 하나라도 다르면 유효하지 않은 값이 된다.
+// 앱 품목명 → 시트 표기. 앱은 괄호 앞에 공백을 두지만 시트는 붙여 쓴다.
+const SHEET_ITEM_NAMES = {
+  '종이컵 (1,000개)': '종이컵(1,000개)',
+  '각티슈 (24개)': '각티슈(24개)',
+  '핸드페이퍼 타월 (5,000매)': '핸드페이퍼타월(5,000매)',
+  '아이스팩 (200개/1박스)': '아이스팩(200개/1박스)',
+};
+
+function toSheetItemName(name) {
+  if (SHEET_ITEM_NAMES[name]) return SHEET_ITEM_NAMES[name];
+  // 매핑에 없으면 공백만 지워 시트 표기에 가깝게 맞춘다
+  return String(name || '').replace(/\s+\(/g, '(').trim();
+}
+
+// 신청 한 건을 시트 행으로. 값이 없는 칸은 빈 문자열로 남긴다.
+function buildDispatchRequestRow(entry) {
+  const map = {
+    '월': entry.month,
+    '영업본부': entry.branch,
+    '요양기관명': entry.clinicName,
+    '신청인': entry.applicant,
+    '항목': toSheetItemName(entry.item),
+    '발주수량': entry.quantity,
+    '수령지(출고지점)': entry.destination,
+    '주소': entry.address,
+  };
+  return SHEET_COLUMNS.map(col => map[col] ?? '');
+}
+
+// 탭으로 구분하면 구글시트에 붙여넣을 때 열이 그대로 나뉜다.
+function buildDispatchRequestTsv(entries) {
+  return entries.map(e => buildDispatchRequestRow(e).join('\t')).join('\n');
+}
+
 function getRegularPromoGapRows(clinicList, txs) {
   return (clinicList || clinics)
     .filter(c => (c.dualTrack || c.noMileage) && !(c.regularPromos || []).length)
@@ -2518,6 +2560,129 @@ function getPaperCupDashboardRows() {
     completed: valid.filter(record => record.status === 'completed').sort((a, b) => b.sentDate.localeCompare(a.sentDate)),
     review: uniqueReview,
   };
+}
+
+// 신청서 상태: 어떤 거래처의 어떤 품목을 몇 개, 사무실 배송인지
+let requestState = { date: '', rows: [] };
+
+function openRequestForm() {
+  const wrap = document.getElementById('dg-request');
+  if (wrap.style.display !== 'none') { wrap.style.display = 'none'; return; }
+
+  // 정기배송 거래처의 정기 품목을 기본으로 채운다. 그게 매달 반복되는 신청이다.
+  requestState.date = requestState.date || today();
+  requestState.rows = clinics
+    .filter(c => c.dualTrack || c.noMileage)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .flatMap(c => (c.regularPromos || []).map(name => ({
+      clinicId: c.id, item: name, qty: 1, office: false, checked: true,
+    })));
+  wrap.style.display = '';
+  renderRequestForm();
+}
+
+function setRequestField(idx, field, value) {
+  const row = requestState.rows[idx];
+  if (!row) return;
+  row[field] = field === 'qty' ? Math.max(1, Number(value) || 1) : value;
+  renderRequestForm();
+}
+
+// 시트에 넣을 실제 값. 주소는 거래처 주소, 사무실 배송이면 설정에 등록한 사무실 것.
+function requestEntries() {
+  const applicant = (appSettings.gsApplicant || '').trim();
+  const month = requestState.date ? `${Number(requestState.date.slice(5, 7))}월` : '';
+  return requestState.rows.filter(r => r.checked).map(r => {
+    const c = clinics.find(x => x.id === r.clinicId);
+    return {
+      month, branch: appSettings.gsBranch || '경기서북영업본부',
+      clinicName: c?.name || '', applicant, item: r.item, quantity: r.qty,
+      destination: r.office ? (appSettings.officeName || '') : (c?.name || ''),
+      address: r.office ? (appSettings.officeAddress || '') : (c?.address || ''),
+      _missing: !(r.office ? appSettings.officeAddress : c?.address),
+    };
+  });
+}
+
+function renderRequestForm() {
+  const wrap = document.getElementById('dg-request');
+  const entries = requestEntries();
+  const missing = entries.filter(e => e._missing).length;
+
+  wrap.innerHTML = `
+    <div class="card" style="border:2px solid var(--primary-light)">
+      <div class="card-title flex justify-between items-center">
+        <span>판촉물 신청서</span>
+        <button class="btn btn-outline btn-sm" onclick="openRequestForm()">닫기</button>
+      </div>
+      <div class="form-row" style="grid-template-columns:auto auto 1fr;align-items:end">
+        <div class="form-group" style="margin:0">
+          <label>신청일</label>
+          <input type="date" value="${requestState.date}" onchange="requestState.date=this.value; renderRequestForm()">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>영업본부</label>
+          <input type="text" value="${escapeHtml(appSettings.gsBranch || '경기서북영업본부')}"
+            onchange="appSettings.gsBranch=this.value.trim(); save(); renderRequestForm()">
+        </div>
+      </div>
+
+      ${missing ? `<div class="alert" style="background:#fef2f2;color:var(--danger);border:1px solid #fecaca">
+        주소가 없는 신청이 ${missing}건 있습니다. 시트가 주소를 필수로 요구하므로 채운 뒤 복사하세요.
+        ${appSettings.officeAddress ? '' : '<br>사무실 배송을 쓰려면 아래 사무실 정보를 먼저 입력하세요.'}
+      </div>` : ''}
+
+      <div class="table-wrap" style="max-height:340px;overflow-y:auto">
+        <table><tr><th></th><th>거래처</th><th>항목</th><th>수량</th><th>사무실</th><th>수령지 · 주소</th></tr>
+        ${requestState.rows.map((r, i) => {
+          const c = clinics.find(x => x.id === r.clinicId);
+          const addr = r.office ? (appSettings.officeAddress || '') : (c?.address || '');
+          const dest = r.office ? (appSettings.officeName || '사무실 미설정') : (c?.name || '');
+          return `<tr style="opacity:${r.checked ? 1 : .45}">
+            <td><input type="checkbox" ${r.checked ? 'checked' : ''} onchange="setRequestField(${i},'checked',this.checked)"></td>
+            <td>${escapeHtml(c?.name || '')}</td>
+            <td>${escapeHtml(toSheetItemName(r.item))}</td>
+            <td><input type="number" min="1" value="${r.qty}" style="width:60px" onchange="setRequestField(${i},'qty',this.value)"></td>
+            <td><input type="checkbox" ${r.office ? 'checked' : ''} onchange="setRequestField(${i},'office',this.checked)"></td>
+            <td class="text-sm">${escapeHtml(dest)}${addr ? ` · ${escapeHtml(addr)}` : ' · <span style="color:var(--danger)">주소 없음</span>'}</td>
+          </tr>`;
+        }).join('')}</table>
+      </div>
+
+      <div class="form-row" style="grid-template-columns:1fr 1fr;margin-top:12px">
+        <div class="form-group" style="margin:0">
+          <label>사무실 수령지명</label>
+          <input type="text" value="${escapeHtml(appSettings.officeName || '')}" placeholder="예: 경기서북지점"
+            onchange="appSettings.officeName=this.value.trim(); save(); renderRequestForm()">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>사무실 주소</label>
+          <input type="text" value="${escapeHtml(appSettings.officeAddress || '')}" placeholder="사무실 배송 주소"
+            onchange="appSettings.officeAddress=this.value.trim(); save(); renderRequestForm()">
+        </div>
+      </div>
+
+      <div class="flex gap-8 items-center" style="margin-top:12px">
+        <button class="btn btn-primary" onclick="copyRequestTsv()">${entries.length}건 복사</button>
+        <span class="text-sm">복사한 뒤 시트의 빈 행 <strong>맨 왼쪽(월 칸)</strong>에 붙여넣으세요.</span>
+      </div>
+      <div id="dg-request-result" class="text-sm" style="margin-top:8px"></div>
+    </div>`;
+}
+
+function copyRequestTsv() {
+  const entries = requestEntries();
+  const result = document.getElementById('dg-request-result');
+  if (!entries.length) { result.textContent = '선택된 신청이 없습니다.'; return; }
+  const missing = entries.filter(e => e._missing);
+  if (missing.length) {
+    result.innerHTML = `<span style="color:var(--danger)">주소가 없는 신청이 ${missing.length}건 있습니다: ${
+      escapeHtml(missing.map(e => e.clinicName).join(', '))}. 거래처 주소를 설정 → 주소에서 채우거나 체크를 해제하세요.</span>`;
+    return;
+  }
+  navigator.clipboard.writeText(buildDispatchRequestTsv(entries))
+    .then(() => { result.innerHTML = `<span style="color:var(--primary)">✅ ${entries.length}건 복사했습니다. 시트 빈 행 맨 왼쪽에 붙여넣으세요.</span>`; })
+    .catch(() => { result.innerHTML = '<span style="color:var(--danger)">복사에 실패했습니다.</span>'; });
 }
 
 function renderDispatchGrid() {

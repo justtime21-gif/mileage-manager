@@ -355,4 +355,44 @@ assert.equal(byId.t1.items.length, 1);
 // 두 번 돌려도 더 깎이지 않는다
 assert.equal(refundFns.findMischargedRegularItems(RC, RT).length, 0);
 
-console.log("OK — 거래처 타임라인·판촉물 정렬·정기 발송 누락·서버 병합·처방 기간·정기 품목 미등록·면제 판정·정기 품목 정정 검증 통과");
+// --- 구글시트 붙여넣기 양식 ---
+const sheetFns = new Function(
+  `${html.slice(html.indexOf("const SHEET_COLUMNS"), html.indexOf("// 신청 한 건을 시트 행으로"))}` +
+  `${grab(html, "toSheetItemName")}\n${grab(html, "buildDispatchRequestRow")}\n${grab(html, "buildDispatchRequestTsv")};` +
+  `return { toSheetItemName, buildDispatchRequestRow, buildDispatchRequestTsv, SHEET_COLUMNS };`
+)();
+
+// 시트 항목 칸은 드롭다운이라 표기가 정확해야 한다 (앱은 괄호 앞 공백, 시트는 붙여 씀)
+assert.equal(sheetFns.toSheetItemName("종이컵 (1,000개)"), "종이컵(1,000개)");
+assert.equal(sheetFns.toSheetItemName("각티슈 (24개)"), "각티슈(24개)");
+assert.equal(sheetFns.toSheetItemName("핸드페이퍼 타월 (5,000매)"), "핸드페이퍼타월(5,000매)");
+// 매핑에 없는 품목도 공백을 지워 시트 표기에 맞춘다
+assert.equal(sheetFns.toSheetItemName("물티슈 (100매)"), "물티슈(100매)");
+
+const ENTRY = {
+  month: "9월", branch: "경기서북영업본부", clinicName: "예일치과", applicant: "성진욱",
+  item: "종이컵 (1,000개)", quantity: 2, destination: "예일치과", address: "경기 파주시 ...",
+};
+const row = sheetFns.buildDispatchRequestRow(ENTRY);
+
+// 열 개수와 순서가 시트와 같아야 붙여넣을 때 안 밀린다
+assert.equal(row.length, 13);
+assert.deepEqual(sheetFns.SHEET_COLUMNS.slice(0, 5), ["월", "영업본부", "요양기관명", "신청인", "항목"]);
+assert.equal(row[0], "9월");
+assert.equal(row[1], "경기서북영업본부");
+assert.equal(row[2], "예일치과");
+assert.equal(row[3], "성진욱");
+assert.equal(row[4], "종이컵(1,000개)");
+assert.equal(row[7], 2);
+assert.equal(row[10], "예일치과");
+assert.equal(row[11], "경기 파주시 ...");
+// 우리가 안 쓰는 칸은 빈 문자열 — 시트 수식과 담당자 몫이다
+[5, 6, 8, 9, 12].forEach(i => assert.equal(row[i], "", `열 ${i}는 비어야 한다`));
+
+// 탭 구분이라야 구글시트에서 열이 나뉜다
+const tsv = sheetFns.buildDispatchRequestTsv([ENTRY, { ...ENTRY, clinicName: "참좋은치과" }]);
+assert.equal(tsv.split("\n").length, 2);
+assert.equal(tsv.split("\n")[0].split("\t").length, 13);
+assert.ok(tsv.split("\n")[1].includes("참좋은치과"));
+
+console.log("OK — 거래처 타임라인·판촉물 정렬·정기 발송 누락·서버 병합·처방 기간·정기 품목 미등록·면제 판정·정기 품목 정정·신청 양식 검증 통과");
