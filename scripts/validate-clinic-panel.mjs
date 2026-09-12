@@ -399,4 +399,42 @@ const tsv = sheetFns.buildDispatchRequestTsv([ENTRY, { ...ENTRY, clinicName: "�
 assert.equal(tsv.split("\n").length, 2);
 assert.equal(tsv.split("\n")[0].split("\t").length, 13);
 
-console.log("OK — 거래처 타임라인·판촉물 정렬·정기 발송 누락·서버 병합·처방 기간·정기 품목 미등록·면제 판정·정기 품목 정정·신청 양식 검증 통과");
+// --- buildAddressSuggestions: 시트 주소를 거래처에 채우기 ---
+const addrFn = new Function(
+  `const dispatchSyncState = {};` +
+  `${grab(html, "normalizeText")}\n${grab(html, "buildAddressSuggestions")}; return buildAddressSuggestions;`
+)();
+
+const AC = [
+  { id: "a1", name: "가치과", address: "" },
+  { id: "a2", name: "나치과", address: "옛 주소" },
+  { id: "a3", name: "다치과", address: "같은 주소" },
+  { id: "a4", name: "없는치과", address: "" },
+];
+const AR = [
+  { clinicName: "가치과", destination: "가치과", address: "경기 파주시 1", sentDate: "2026-05-01" },
+  // 같은 거래처의 더 최근 건 — 이사했을 수 있으니 최근 것을 쓴다
+  { clinicName: "가치과", destination: "가치과", address: "경기 파주시 2 (이전)", sentDate: "2026-09-01" },
+  { clinicName: "나치과", destination: "나치과", address: "서울 강서구 9", sentDate: "2026-08-01" },
+  { clinicName: "다치과", destination: "다치과", address: "같은 주소", sentDate: "2026-08-01" },
+  // 사무실 배송 행 — 주소가 사무실 것이라 거래처 주소로 쓰면 안 된다
+  { clinicName: "가치과", destination: "경기서북지점", address: "사무실 주소", sentDate: "2026-09-05" },
+  // 주소가 빈 행은 무시
+  { clinicName: "나치과", destination: "나치과", address: "", sentDate: "2026-09-09" },
+  // 앱에 없는 거래처는 무시
+  { clinicName: "모르는치과", destination: "모르는치과", address: "어딘가", sentDate: "2026-09-01" },
+];
+
+const sug = addrFn(AC, AR);
+// 이미 같은 주소인 다치과는 제안하지 않는다
+assert.deepEqual(sug.map(r => r.clinic.id).sort(), ["a1", "a2"]);
+// 최근 건을 쓴다
+assert.equal(sug.find(r => r.clinic.id === "a1").address, "경기 파주시 2 (이전)");
+// 사무실 배송 주소가 섞이지 않았다
+assert.ok(!sug.some(r => r.address === "사무실 주소"));
+// 비어 있는 곳이 먼저 온다
+assert.equal(sug[0].clinic.id, "a1");
+assert.equal(sug[0].current, "");
+assert.equal(sug[1].current, "옛 주소");
+
+console.log("OK — 거래처 타임라인·판촉물 정렬·정기 발송 누락·서버 병합·처방 기간·정기 품목 미등록·면제 판정·정기 품목 정정·신청 양식·주소 제안 검증 통과");

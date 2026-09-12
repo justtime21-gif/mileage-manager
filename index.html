@@ -733,6 +733,16 @@
       <!-- 탭: 거래선 주소 -->
       <div id="stab-panel-addresses" style="display:none">
         <div class="card">
+          <div class="card-title">구글시트에서 주소 가져오기</div>
+          <div class="text-sm" style="margin-bottom:10px;line-height:1.6">
+            시트 신청 이력에 적힌 주소를 거래처에 채웁니다. 사무실 배송 행(수령지가 거래처명과 다른 행)은
+            사무실 주소라 제외하고, 한 거래처에 여러 건이 있으면 가장 최근 것을 제안합니다.
+          </div>
+          <button class="btn btn-outline" onclick="renderAddressSuggestions()">시트 주소 불러오기</button>
+          <div id="addr-suggest" style="margin-top:12px"></div>
+        </div>
+
+        <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:14px;flex-wrap:wrap">
             <div>
               <div class="card-title" style="margin-bottom:4px">📍 거래선 수령지 주소</div>
@@ -2467,6 +2477,82 @@ function applyRegularItemRefunds(rows) {
     tx.memo = `${tx.memo ? tx.memo + ' · ' : ''}정기 품목 정정`;
   });
   return rows.length;
+}
+
+// 시트 주소로 거래처 주소를 채운다. 신청서가 주소를 필수로 요구하는데 앱엔 일부만 있다.
+// 사무실 배송 행(수령지 ≠ 요양기관명)의 주소는 사무실 주소라 거래처 주소로 쓰면 안 된다.
+// 한 거래처에 여러 행이 있으면 가장 최근 것을 쓴다 — 이사했을 수 있다.
+function renderAddressSuggestions() {
+  const root = document.getElementById('addr-suggest');
+  if (!dispatchSyncState.records?.length) {
+    root.innerHTML = `<div class="alert" style="margin:0;background:#fff7ed;color:#b45309;border:1px solid #fed7aa">
+      시트를 아직 못 읽었습니다. <button class="btn btn-outline btn-sm" onclick="loadDispatchStatus(true).then(renderAddressSuggestions)">불러오기</button></div>`;
+    return;
+  }
+  const rows = buildAddressSuggestions();
+  if (!rows.length) {
+    root.innerHTML = '<div class="alert alert-success" style="margin:0">시트 주소와 다른 거래처가 없습니다.</div>';
+    return;
+  }
+  const 새로 = rows.filter(r => !r.current).length;
+  root.innerHTML = `
+    <div class="text-sm" style="margin-bottom:8px">${rows.length}곳 제안 · 그중 ${새로}곳은 주소가 비어 있습니다.</div>
+    <div class="table-wrap" style="max-height:360px;overflow-y:auto">
+      <table><tr><th>거래처</th><th>지금 주소</th><th>시트 주소</th><th></th></tr>
+      ${rows.map((r, i) => `<tr>
+        <td style="white-space:nowrap">${escapeHtml(r.clinic.name)}</td>
+        <td class="text-sm">${r.current ? escapeHtml(r.current) : '<span style="color:var(--danger)">없음</span>'}</td>
+        <td class="text-sm">${escapeHtml(r.address)}</td>
+        <td><button class="btn btn-outline btn-sm" onclick="applyAddressSuggestion('${r.clinic.id}', ${i})">적용</button></td>
+      </tr>`).join('')}</table>
+    </div>
+    <div class="flex gap-8" style="margin-top:10px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="applyAllAddressSuggestions(true)">비어 있는 ${새로}곳만 채우기</button>
+      <button class="btn btn-outline" onclick="applyAllAddressSuggestions(false)">${rows.length}곳 모두 적용</button>
+    </div>`;
+}
+
+function applyAddressSuggestion(clinicId, idx) {
+  const row = buildAddressSuggestions().find(r => r.clinic.id === clinicId);
+  if (!row) return;
+  row.clinic.address = row.address;
+  row.clinic.updatedAt = Date.now();
+  save();
+  renderAddressSuggestions();
+  renderClinicAddresses();
+}
+
+function applyAllAddressSuggestions(onlyEmpty) {
+  const rows = buildAddressSuggestions().filter(r => !onlyEmpty || !r.current);
+  if (!rows.length) return;
+  // 이미 주소가 있는 곳을 덮어쓰는 건 되돌리기 어렵다. 그 경우만 한 번 더 확인한다.
+  if (!onlyEmpty && !confirm(`${rows.length}곳의 주소를 시트 값으로 바꿉니다. 기존 주소는 사라집니다.\n계속할까요?`)) return;
+  rows.forEach(r => { r.clinic.address = r.address; r.clinic.updatedAt = Date.now(); });
+  save();
+  renderAddressSuggestions();
+  renderClinicAddresses();
+  alert(`✅ ${rows.length}곳 주소를 채웠습니다.`);
+}
+
+function buildAddressSuggestions(clinicList, records) {
+  const best = new Map();
+  (records || dispatchSyncState.records || []).forEach(r => {
+    const addr = String(r.address || '').trim();
+    if (!addr) return;
+    const dest = normalizeText(r.destination || '');
+    const name = normalizeText(r.clinicName || '');
+    if (dest && name && dest !== name) return;          // 사무실 배송 행은 제외
+    const clinic = (clinicList || clinics).find(c => normalizeText(c.name) === name);
+    if (!clinic) return;
+    const prev = best.get(clinic.id);
+    const when = r.sentDate || '';
+    if (!prev || when > prev.when) best.set(clinic.id, { clinic, address: addr, when });
+  });
+
+  return [...best.values()]
+    .map(x => ({ ...x, current: (x.clinic.address || '').trim() }))
+    .filter(x => x.current !== x.address)               // 이미 같으면 보여줄 이유가 없다
+    .sort((a, b) => (a.current ? 1 : 0) - (b.current ? 1 : 0) || a.clinic.name.localeCompare(b.clinic.name));
 }
 
 // ===== 판촉물 신청서 (구글시트 붙여넣기용) =====

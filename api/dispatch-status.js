@@ -12,6 +12,10 @@ const OPTIONAL_HEADERS = {
   sentDate: ['발송일', '출고일', '배송일', 'date', 'sentdate'],
   requestMonth: ['월', '신청월', '발송월', 'month'],
   branch: ['영업본부', '본부', '지점'],
+  // 신청서를 쓰려면 주소가 있어야 하는데 앱에는 일부 거래처만 있다.
+  // 시트에는 이미 채워져 있으므로 그대로 읽어 거래처에 채우는 데 쓴다.
+  destination: ['수령지', '수령지(출고지점)', '출고지점'],
+  address: ['주소', '배송주소', '수령지주소'],
 };
 
 export default async (req, res) => {
@@ -166,6 +170,8 @@ function normalizeSheetRows(values) {
       rawStatus: value('status'),
       sentDate: normalizeDate(value('sentDate')) || dispatch.date,
       requestMonth: normalizeMonth(value('requestMonth')),
+      destination: value('destination'),
+      address: value('address'),
     };
     record.status = dispatch.status;
     record.isPaperCup = normalizeHeader(record.item).includes('종이컵');
