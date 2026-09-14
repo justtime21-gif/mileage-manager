@@ -1371,6 +1371,7 @@ async function hydrateMileageState() {
       reportSnapshots = merged.reportSnapshots;
       migrateBrochureDrugs();
       migrateCombinedPromoItems();
+      addCoolzeroGargleOnce();
       migrateClinicNames();
       save();
       if (hasDiff) {
@@ -1484,8 +1485,19 @@ async function initMileageAuth() {
 let clinics = DB.get('clinics', []);
 let rxDrugs = DB.get('rxDrugs', getDefaultRxDrugs());
 migrateBrochureDrugs();
+// 단종 예정 품목. 목록 이미지에는 빼되 차감은 계속 되어야 해서 hideInList로 넣는다.
+// id를 고정해야 기기별로 따로 만들어진 뒤 서버 병합에서 중복으로 남지 않는다.
+const COOLZERO_GARGLE = {
+  id: 'promo-coolzero-gargle-500',
+  name: '쿨제로 가글 500ML (15개입)',
+  price: 49500,
+  category: '약제',
+  spec: '판매단위: 15개입/box\n품목코드: RECOOLZ-500',
+};
+
 let promoItems = DB.get('promoItems', getDefaultPromoItems());
 migrateCombinedPromoItems();
+addCoolzeroGargleOnce();
 let transactions = DB.get('transactions', []);
 let appSettings = DB.get('appSettings', { orderDates: [], promoSheetUrl: '' });
 // 거래선별 마지막 보고서 전송 시점 { [clinicId]: { balance, at, date } }
@@ -1521,6 +1533,15 @@ migrateClinicNames();
 // 이미 등록된 거래처는 localStorage에 그대로 남는다 — 필요하면 직접 추가하면 된다.
 
 // 슬래시로 묶여 있던 판촉물을 개별 품목으로 분리 (기존 저장 데이터 1회 마이그레이션)
+// 기존 사용자 데이터에는 기본 목록이 다시 적용되지 않아 따로 한 번 넣어준다.
+function addCoolzeroGargleOnce() {
+  if (DB.get('promoAddedCoolzero', false)) return;
+  DB.set('promoAddedCoolzero', true);
+  if (promoItems.some(p => p.id === COOLZERO_GARGLE.id || p.name === COOLZERO_GARGLE.name)) return;
+  promoItems.push({ ...COOLZERO_GARGLE, hideInList: true });
+  DB.set('promoItems', promoItems);
+}
+
 function migrateCombinedPromoItems() {
   const splits = {
     '뷰센 7/15/28 (10개)': ['뷰센 7 (10개)', '뷰센 15 (10개)', '뷰센 28 (10개)'],
@@ -1658,6 +1679,7 @@ function getDefaultPromoItems() {
     { id: uid(), name: '리도카겔 30G', price: 19400, category: '약제' },
     { id: uid(), name: '제로미아액 40ML', price: 7000, category: '약제' },
     { id: uid(), name: 'PDRN(5)', price: 99000, category: '약제' },
+    { ...COOLZERO_GARGLE, hideInList: true },
     { id: uid(), name: '오스타민D 덴탈세트', price: 24000, category: '선물세트' },
     { id: uid(), name: '오스템 패밀리 여행용키트 4개입', price: 13500, category: '선물세트' },
   ];
