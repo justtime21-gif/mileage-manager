@@ -1369,6 +1369,7 @@ async function hydrateMileageState() {
       promoItems = merged.promoItems.length ? merged.promoItems : getDefaultPromoItems();
       appSettings = merged.appSettings;
       reportSnapshots = merged.reportSnapshots;
+      fixRegularPromoSpends();
       migrateBrochureDrugs();
       migrateCombinedPromoItems();
       addCoolzeroGargleOnce();
@@ -1499,6 +1500,32 @@ let promoItems = DB.get('promoItems', getDefaultPromoItems());
 migrateCombinedPromoItems();
 addCoolzeroGargleOnce();
 let transactions = DB.get('transactions', []);
+fixRegularPromoSpends();
+
+// 정기 발송(차감 면제) 품목인데 이미 차감된 채로 남은 기록을 되돌린다.
+// 면제 판정이 화면마다 따로 있던 동안(빠른 입력·차감 수정) 이름 표기가 조금만 달라도
+// 그대로 차감돼, 거래선 잔액이 실제보다 적게 보였다.
+// 금액 재계산은 실제로 되돌린 기록에만 한다 — 품목별 금액이 없는 옛 기록까지 건드리면
+// 멀쩡한 차감이 0원이 된다.
+function fixRegularPromoSpends() {
+  let changed = false;
+  transactions.forEach(t => {
+    if (t.type !== 'spend' || !Array.isArray(t.items)) return;
+    const c = clinics.find(x => x.id === t.clinicId);
+    if (!c || !(c.dualTrack || c.noMileage)) return;
+    let cleared = false;
+    t.items.forEach(it => {
+      if (it.amount && (c.noMileage || isRegularPromoForClinic(c, it.name))) {
+        it.amount = 0;
+        cleared = true;
+      }
+    });
+    if (!cleared) return;
+    t.amount = t.items.reduce((sum, it) => sum + (it.amount || 0), 0);
+    changed = true;
+  });
+  if (changed) DB.set('transactions', transactions);
+}
 let appSettings = DB.get('appSettings', { orderDates: [], promoSheetUrl: '' });
 // 거래선별 마지막 보고서 전송 시점 { [clinicId]: { balance, at, date } }
 // 다음 보고서는 이 잔액에서 이어지고, 그 이후 입력분만 표에 보여준다.
@@ -5327,9 +5354,8 @@ function saveSpendEdit() {
   if (c?.noMileage) {
     items.forEach(i => { i.amount = 0; });
   } else if (c?.dualTrack) {
-    const rp = c.regularPromos || [];
     items.forEach(i => {
-      if (rp.some(r => i.name.includes(r) || r.includes(i.name))) i.amount = 0;
+      if (isRegularPromoForClinic(c, i.name)) i.amount = 0;
     });
   }
 
@@ -5663,9 +5689,8 @@ function saveQuickRecords() {
     }
     // dualTrack: 정기 발송 품목은 차감 0
     if (clinic.dualTrack) {
-      const rp = clinic.regularPromos || [];
       txItems.forEach(i => {
-        if (rp.some(r => i.name.includes(r) || r.includes(i.name))) i.amount = 0;
+        if (isRegularPromoForClinic(clinic, i.name)) i.amount = 0;
       });
     }
     const deductTotal = txItems.reduce((s, i) => s + i.amount, 0);
