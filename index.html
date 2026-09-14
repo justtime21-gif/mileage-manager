@@ -612,6 +612,7 @@
               <div style="border:1px solid var(--gray-200);border-radius:8px;overflow:hidden;background:white">
                 <canvas id="report-canvas" style="width:100%;display:block"></canvas>
               </div>
+              <div id="report-spend-toggles" style="margin-top:10px"></div>
               <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
                 <button class="btn btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="openSpendFromReport()">+ 차감 추가</button>
                 <button class="btn btn-accent" onclick="copyReportImage()">📋 이미지 복사</button>
@@ -4546,11 +4547,15 @@ function getReportData() {
     if (t.clinicId !== clinicId || t.type !== 'spend') return false;
     return snapshot ? t.createdAt > snapshot.at : (!refDate || t.date >= refDate);
   });
-  const spendRows = [];
-  spends.forEach(t => (t.items || []).forEach(it => {
-    spendRows.push({ date: t.date, name: it.name, qty: it.qty || 1, price: it.price || it.amount, amount: it.amount });
+  // 이미 보낸 차감 줄은 체크를 풀어 표에서 뺀다. 뺀 금액은 '이전 잔액'에 녹여
+  // 넣으므로 '이전 잔액 + 이번 적립 - 차감 합계 = 최종 잔액'은 그대로 성립한다.
+  const spendRows = [], hiddenSpendRows = [];
+  spends.forEach(t => (t.items || []).forEach((it, idx) => {
+    const row = { key: `${t.id}:${idx}`, date: t.date, name: it.name, qty: it.qty || 1, price: it.price || it.amount, amount: it.amount };
+    (hiddenSpendKeys.has(row.key) ? hiddenSpendRows : spendRows).push(row);
   }));
   const monthSpend = spendRows.reduce((s, r) => s + r.amount, 0);
+  const hiddenSpend = hiddenSpendRows.reduce((s, r) => s + r.amount, 0);
 
   const { earned, spent, balance, initial } = getClinicBalance(clinicId);
 
@@ -4569,6 +4574,7 @@ function getReportData() {
       .reduce((sum, t) => sum + (t.amount || 0), 0);
     previousBalance = initial + previousEarned - previousSpent;
   }
+  previousBalance -= hiddenSpend;
 
   // 처방 기간 문자열 — 새 처방이 여러 건이면 전체 범위를 표시
   let periodStr = '';
@@ -4579,7 +4585,7 @@ function getReportData() {
     periodStr = `${f(starts[0])} ~ ${f(ends[ends.length - 1])}`;
   }
 
-  return { c, rate, items, monthTotal, monthMileage, spendRows, monthSpend, earned, spent, balance, initial, previousBalance, periodStr,
+  return { c, rate, items, monthTotal, monthMileage, spendRows, hiddenSpendRows, monthSpend, earned, spent, balance, initial, previousBalance, periodStr,
     snapshot: snapshot || null,
     latestEarnTxId: latestEarnTx?.id || null, rxStart: starts[0] || '', rxEnd: ends[ends.length - 1] || '' };
 }
@@ -4597,9 +4603,34 @@ function saveReportPeriod() {
   renderReport();
 }
 
+// 보고서에서 뺀 차감 줄 (transactionId:품목index). 거래처를 바꾸면 비운다.
+let hiddenSpendKeys = new Set();
+let hiddenSpendClinicId = null;
+
+function toggleReportSpend(key, show) {
+  if (show) hiddenSpendKeys.delete(key); else hiddenSpendKeys.add(key);
+  renderReport();
+}
+
+function renderReportSpendToggles(d) {
+  const wrap = document.getElementById('report-spend-toggles');
+  const rows = [...d.spendRows.map(r => ({ r, on: true })), ...d.hiddenSpendRows.map(r => ({ r, on: false }))]
+    .sort((a, b) => (a.r.date || '').localeCompare(b.r.date || ''));
+  if (!rows.length) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML = '<div style="font-size:12px;color:var(--gray-500);margin-bottom:6px">보고서에 넣을 차감 내역 — 이미 보낸 건은 체크를 풀면 표에서 빠지고 이전 잔액에 반영됩니다.</div>' +
+    rows.map(({ r, on }) => `<label style="display:inline-flex;align-items:center;gap:6px;margin:0 12px 6px 0;font-size:13px">
+      <input type="checkbox" ${on ? 'checked' : ''} onchange="toggleReportSpend('${r.key}', this.checked)">
+      ${(r.date || '').slice(2).replace(/-/g, '.')} ${r.name} ×${fmtNum(r.qty)}</label>`).join('');
+}
+
 function renderReport() {
+  const clinicId = document.getElementById('report-clinic').value;
+  if (clinicId !== hiddenSpendClinicId) { hiddenSpendKeys.clear(); hiddenSpendClinicId = clinicId; }
+
   const d = getReportData();
   if (!d) return;
+
+  renderReportSpendToggles(d);
 
   document.getElementById('report-period-start').value = d.rxStart || '';
   document.getElementById('report-period-end').value = d.rxEnd || '';
