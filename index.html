@@ -1966,7 +1966,9 @@ function renderHubSummary(clinicId) {
       <button class="btn btn-outline btn-sm" onclick="copyClinicHistoryImage('${clinicId}')">📋 이력 이미지 복사</button>
     </div>` + rows.map(r => `
     <div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--gray-100);font-size:13px">
-      <span style="min-width:88px;color:var(--gray-500)">${r.date}</span>
+      <input type="date" value="${r.date}" onchange="updateTxDate('${r.id}', this.value)"
+        style="width:130px;padding:2px 4px;font-size:13px;color:var(--gray-500);border:1px solid transparent;border-radius:4px;background:none"
+        onmouseover="this.style.borderColor='var(--gray-300)'" onmouseout="this.style.borderColor='transparent'">
       <span style="flex:1;color:var(--gray-700)">${escapeHtml(r.desc)}</span>
       <strong style="color:${r.kind === 'earn' ? 'var(--primary)' : 'var(--danger)'}">${r.kind === 'earn' ? '+' : '-'}${fmt(r.amount)}</strong>
       <span style="min-width:96px;text-align:right;color:var(--gray-500)">잔액 ${fmtNum(r.balance)}원</span>
@@ -5108,6 +5110,21 @@ function isRegularPromoForClinic(clinic, itemName) {
   });
 }
 
+// 처방 기간 수정. rxMonth는 rxStart에서 파생되므로 같이 맞춘다.
+function updateTxPeriod(id, field, value) {
+  if (!value) return;
+  const t = transactions.find(x => x.id === id);
+  if (!t) return;
+  const start = field === 'rxStart' ? value : t.rxStart;
+  const end = field === 'rxEnd' ? value : t.rxEnd;
+  if (start && end && end < start) return alert('종료일이 시작일보다 빠릅니다.');
+  t[field] = value;
+  if (t.rxStart) t.rxMonth = t.rxStart.slice(0, 7);
+  save();
+  refreshHubAfterSave();
+  showEarnDetail(id);
+}
+
 function showEarnDetail(txId) {
   const t = transactions.find(x => x.id === txId);
   if (!t) return;
@@ -5115,13 +5132,10 @@ function showEarnDetail(txId) {
   const rate = t.rate || 0;
   const items = (t.items || []).filter(i => (parseFloat(i.qty) || 0) > 0);
 
-  let periodStr = '';
-  if (t.rxStart && t.rxEnd) {
-    const f = s => `${s.slice(2,4)}년 ${Number(s.slice(5,7))}월 ${Number(s.slice(8,10))}일`;
-    periodStr = `${f(t.rxStart)} ~ ${f(t.rxEnd)}`;
-  } else {
-    periodStr = t.date || '';
-  }
+  const dateInput = (field, val) => `<input type="date" value="${val || ''}"
+    onchange="updateTxPeriod('${txId}', '${field}', this.value)"
+    style="padding:2px 4px;font-size:13px;color:var(--gray-600);border:1px solid var(--gray-300);border-radius:4px">`;
+  const periodStr = `${dateInput('rxStart', t.rxStart)} ~ ${dateInput('rxEnd', t.rxEnd)}`;
 
   const now = new Date();
   const createdStr = t.createdAt
@@ -5164,6 +5178,16 @@ function showEarnDetail(txId) {
 
   document.getElementById('earn-detail-body').innerHTML = rows + totalRow + balRow;
   document.getElementById('earn-detail-modal').classList.add('open');
+}
+
+// 요약 이력의 날짜 직접 수정. 날짜가 바뀌면 정렬·잔액 순서가 달라져 다시 그린다.
+function updateTxDate(id, value) {
+  if (!value) return;
+  const t = transactions.find(x => x.id === id);
+  if (!t) return;
+  t.date = value;
+  save();
+  refreshHubAfterSave();
 }
 
 function deleteTx(id) {
