@@ -1956,6 +1956,7 @@ function renderClinicPanel(clinicId) {
       <div style="display:flex;gap:6px">
         <button id="hub-back-btn" class="btn btn-outline btn-sm" style="display:none" onclick="showHubList()">← 목록</button>
       <button class="btn btn-outline btn-sm" onclick="copyPromoHistory('${c.id}')" title="발송 이력을 카톡 붙여넣기용 텍스트로 복사">발송 이력 복사</button>
+      <button class="btn btn-outline btn-sm" onclick="resetClinicBalance('${c.id}')" title="거래선에 보낸 보고서의 최종 잔액으로 맞춘다">잔액 재설정</button>
       <button class="btn btn-outline btn-sm" onclick="editClinic('${c.id}')">수정</button>
         <button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="deleteClinic('${c.id}')">삭제</button>
       </div>
@@ -3340,6 +3341,27 @@ function saveClinic() {
     clinicModalFromSheetReview = false;
     renderDashboardWorklists();
   }
+}
+
+// 거래선에 이미 보낸 보고서의 최종 잔액으로 현재 잔액을 맞춘다. 이력을 지우지 않고
+// '이전 누적 잔액'만 차이만큼 옮기므로, 적립·차감 기록은 그대로 남는다.
+// 거래선이 받은 숫자와 앱의 숫자가 어긋나면 그 뒤 보고서를 아무리 잘 만들어도 못 믿는다.
+function resetClinicBalance(id) {
+  const c = clinics.find(x => x.id === id);
+  if (!c) return;
+  const { balance } = getClinicBalance(id);
+  const input = prompt(`${c.name} 잔액 재설정\n\n거래선에 보낸 보고서의 최종 잔액을 입력하세요.\n현재 앱 잔액: ${fmt(balance)}`, String(balance));
+  if (input === null) return;
+  const target = Math.round(parseFloat(String(input).replace(/[,\s원]/g, '')));
+  if (isNaN(target)) return alert('숫자를 입력하세요.');
+  const diff = target - balance;
+  if (!diff) return alert('이미 같은 잔액입니다.');
+  if (!confirm(`${c.name}\n${fmt(balance)} → ${fmt(target)} (${diff > 0 ? '+' : ''}${fmtNum(diff)}원)\n\n이전 누적 잔액을 ${fmtNum(c.initialBalance || 0)} → ${fmtNum((c.initialBalance || 0) + diff)}로 바꿉니다.\n적립·차감 이력은 그대로 남습니다.`)) return;
+  c.initialBalance = (c.initialBalance || 0) + diff;
+  c.updatedAt = Date.now();
+  save();
+  renderClinicList();
+  renderClinicPanel(id);
 }
 
 function editClinic(id) { openClinicModal(id); }
