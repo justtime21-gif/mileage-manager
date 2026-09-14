@@ -448,7 +448,7 @@
           <div id="hub-panel-head" style="display:none"></div>
           <div id="hub-tab-body" style="display:none">
             <div id="hub-pane-summary" class="hub-pane"></div>
-            <div id="rx-workarea" class="hub-pane workarea-2col">
+            <div id="rx-workarea" class="hub-pane">
               <div class="card">
                 <div class="card-title">처방 정보 입력</div>
                 <div class="form-row" style="grid-template-columns:1fr">
@@ -525,13 +525,6 @@
                 </div>
               </div>
 
-              <div class="card">
-                <div class="card-title">마지막 보고서</div>
-                <div id="rx-report-meta" class="text-sm" style="margin-bottom:10px;color:var(--gray-500)">거래선을 선택하면 마지막으로 보낸 보고서가 표시됩니다.</div>
-                <div id="rx-report-wrap" style="display:none;border:1px solid var(--gray-200);border-radius:8px;overflow:hidden;background:white">
-                  <canvas id="rx-report-canvas" style="width:100%;display:block"></canvas>
-                </div>
-              </div>
             </div>
             <div id="redeem-workarea" class="hub-pane workarea-2col">
               <div class="card">
@@ -3306,7 +3299,6 @@ function onRxClinicChange() {
   updateRxRate();
   setRxPeriodForClinic(document.getElementById('rx-clinic')?.value || '');
   showPrevRxBtn();
-  renderRxLastReport();
 }
 
 function updateRxRate() {
@@ -4463,26 +4455,6 @@ function deletePromoItem(id) {
   });
 }
 
-// 처방 입력 화면 오른쪽에 선택한 거래선의 마지막 전송 보고서를 다시 그려 보여준다.
-function renderRxLastReport() {
-  const clinicId = document.getElementById('rx-clinic')?.value || '';
-  const meta = document.getElementById('rx-report-meta');
-  const wrap = document.getElementById('rx-report-wrap');
-  if (!meta || !wrap) return;
-
-  wrap.style.display = 'none';
-
-  if (!clinicId) { meta.textContent = '거래선을 선택하면 마지막으로 보낸 보고서가 표시됩니다.'; return; }
-
-  const snap = reportSnapshots[clinicId];
-  if (!snap) { meta.textContent = '아직 전송한 보고서가 없습니다.'; return; }
-  if (!snap.report) { meta.textContent = `${snap.date || ''} 전송 기록은 있으나 보고서 내용이 저장되기 전입니다. 다음 전송부터 표시됩니다.`; return; }
-
-  meta.textContent = `${snap.date || ''} 전송 | 최종 잔액 ${fmt(snap.balance || 0)}`;
-  wrap.style.display = '';
-  drawReport(snap.report, document.getElementById('rx-report-canvas'));
-}
-
 // ===== REPORT (카톡 전송용 이미지) =====
 function openSpendFromReport() {
   const clinicId = document.getElementById('report-clinic').value;
@@ -4590,7 +4562,7 @@ function renderReport() {
   drawReport(d, document.getElementById('report-canvas'));
 }
 
-// 보고서 캔버스 그리기. 현재 데이터(renderReport)와 저장된 마지막 보고서(renderRxLastReport)가 공유한다.
+// 보고서 캔버스 그리기.
 function drawReport(d, canvas) {
   const W = 900;
   const rowH = 40;
