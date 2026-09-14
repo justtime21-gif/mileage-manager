@@ -1947,17 +1947,117 @@ function showHubTab(tabName) {
   sel.dispatchEvent(new Event('change'));
 }
 
-function renderHubSummary(clinicId) {
+// 통장식 이력: 오래된 것부터 초기 잔액에 쌓아 각 줄 시점의 잔액을 붙인다.
+function clinicTimelineWithBalance(clinicId) {
   const rows = buildClinicTimeline(clinicId);
+  let run = clinics.find(c => c.id === clinicId)?.initialBalance || 0;
+  [...rows].reverse().forEach(r => {
+    r.before = run;
+    run += r.kind === 'earn' ? r.amount : -r.amount;
+    r.balance = run;
+  });
+  return rows;
+}
+
+function renderHubSummary(clinicId) {
+  const rows = clinicTimelineWithBalance(clinicId);
   if (!rows.length) return '<div class="text-sm" style="color:var(--gray-400);padding:12px 0">거래 이력이 없습니다.</div>';
-  return rows.map(r => `
+  return `<div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+      <button class="btn btn-outline btn-sm" onclick="copyClinicHistoryImage('${clinicId}')">📋 이력 이미지 복사</button>
+    </div>` + rows.map(r => `
     <div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--gray-100);font-size:13px">
       <span style="min-width:88px;color:var(--gray-500)">${r.date}</span>
       <span style="flex:1;color:var(--gray-700)">${escapeHtml(r.desc)}</span>
       <strong style="color:${r.kind === 'earn' ? 'var(--primary)' : 'var(--danger)'}">${r.kind === 'earn' ? '+' : '-'}${fmt(r.amount)}</strong>
+      <span style="min-width:96px;text-align:right;color:var(--gray-500)">잔액 ${fmtNum(r.balance)}원</span>
       <button class="btn btn-outline btn-sm" onclick="${r.kind === 'earn' ? `showEarnDetail('${r.id}')` : `editSpendTx('${r.id}')`}">${r.kind === 'earn' ? '상세' : '수정'}</button>
       <button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="deleteTx('${r.id}')">삭제</button>
     </div>`).join('');
+}
+
+// 거래처에 보낼 이력 이미지 (날짜·내용·증감·잔액). 보고서와 같은 카톡 붙여넣기 방식.
+function buildClinicHistoryCanvas(clinicId) {
+  const c = clinics.find(x => x.id === clinicId);
+  const rows = clinicTimelineWithBalance(clinicId);
+  const W = 900, ROW_H = 38, HEAD = 110, FOOT = 76;
+  const H = HEAD + ROW_H + rows.length * ROW_H + FOOT;
+  const scale = 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = W * scale; canvas.height = H * scale;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+  const F = "'Apple SD Gothic Neo','Malgun Gothic',sans-serif";
+
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#111827'; ctx.font = `bold 26px ${F}`; ctx.textAlign = 'left';
+  ctx.fillText(`${c.name} 마일리지 이력`, 36, 50);
+  ctx.fillStyle = '#6b7280'; ctx.font = `14px ${F}`;
+  const initial = c.initialBalance || 0;
+  ctx.fillText(`작성일시: ${new Date().toLocaleString('ko-KR')}${initial ? ` · 이전 누적 ${fmtNum(initial)}원 포함` : ''}`, 36, 76);
+
+  const cols = [
+    { label: '날짜', w: 0.16, align: 'left' },
+    { label: '내용', w: 0.46, align: 'left' },
+    { label: '증감 (원)', w: 0.19, align: 'right' },
+    { label: '잔액 (원)', w: 0.19, align: 'right' },
+  ];
+  const tX = 36, tW = W - 72;
+  let y = HEAD;
+
+  function drawRow(cells, bg, fg, bold) {
+    ctx.fillStyle = bg; ctx.fillRect(tX, y, tW, ROW_H);
+    ctx.strokeStyle = '#e5e7eb'; ctx.strokeRect(tX, y, tW, ROW_H);
+    ctx.font = `${bold ? 'bold ' : ''}14px ${F}`;
+    let cx = tX;
+    cells.forEach((cell, i) => {
+      const cw = cols[i].w * tW;
+      ctx.save();
+      ctx.beginPath(); ctx.rect(cx, y, cw, ROW_H); ctx.clip();
+      ctx.fillStyle = Array.isArray(fg) ? fg[i] : fg;
+      ctx.textAlign = cols[i].align;
+      ctx.fillText(String(cell), cols[i].align === 'right' ? cx + cw - 12 : cx + 12, y + 25);
+      ctx.restore();
+      cx += cw;
+    });
+    ctx.textAlign = 'left';
+    y += ROW_H;
+  }
+
+  drawRow(cols.map(x => x.label), '#4472c4', '#ffffff', true);
+  rows.slice().reverse().forEach(r => drawRow(
+    [r.date, r.desc, `${r.kind === 'earn' ? '+' : '-'}${fmtNum(r.amount)}`, fmtNum(r.balance)],
+    '#ffffff',
+    ['#111827', '#111827', r.kind === 'earn' ? '#1a6b3c' : '#e53e3e', '#111827'],
+    false
+  ));
+
+  y += 14;
+  const bal = getClinicBalance(clinicId).balance;
+  ctx.fillStyle = '#fff7ed'; ctx.fillRect(tX, y, tW, 56);
+  ctx.strokeStyle = '#fdba74'; ctx.lineWidth = 2; ctx.strokeRect(tX, y, tW, 56); ctx.lineWidth = 1;
+  ctx.fillStyle = '#9a3412'; ctx.font = `bold 18px ${F}`;
+  ctx.fillText('마일리지 현재 잔액', tX + 16, y + 35);
+  ctx.fillStyle = '#c2410c'; ctx.font = `bold 26px ${F}`; ctx.textAlign = 'right';
+  ctx.fillText(`${fmtNum(bal)} 원`, tX + tW - 16, y + 37);
+  ctx.textAlign = 'left';
+  return canvas;
+}
+
+async function copyClinicHistoryImage(clinicId) {
+  const rows = buildClinicTimeline(clinicId);
+  if (!rows.length) { alert('거래 이력이 없습니다.'); return; }
+  const canvas = buildClinicHistoryCanvas(clinicId);
+  try {
+    await navigator.clipboard.write([
+      new ClipboardItem({ 'image/png': new Promise(resolve => canvas.toBlob(resolve, 'image/png')) })
+    ]);
+    alert('✅ 이미지가 복사되었습니다.\n카톡 채팅창에 붙여넣기(Cmd+V) 하세요.');
+  } catch (e) {
+    const url = canvas.toDataURL('image/png');
+    const w = window.open('', '_blank');
+    w.document.write(`<img src="${url}" style="max-width:100%"><p style="font-family:sans-serif;color:#666">이미지를 길게 눌러(또는 우클릭) 복사하세요</p>`);
+    w.document.close();
+  }
 }
 
 // 처방·차감을 저장하면 헤더 잔액과 요약이 즉시 맞아야 한다.
