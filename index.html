@@ -1083,6 +1083,13 @@
       <input type="file" id="pm-img-input" accept="image/*" onchange="setPromoImage(this.files[0]); this.value=''">
       <div id="pm-img-preview" style="margin-top:8px"></div>
     </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal">
+        <input type="checkbox" id="pm-hide-list" style="width:16px;height:16px">
+        <span>판촉물 목록 이미지에서 숨김</span>
+      </label>
+      <div class="text-sm" style="color:var(--gray-500);margin-top:4px">단종 예정 품목 등. 차감 화면에서는 그대로 선택할 수 있다.</div>
+    </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closePromoModal()">취소</button>
       <button class="btn btn-primary" onclick="savePromoItem()">저장</button>
@@ -4234,7 +4241,7 @@ function buildPromoListCanvas() {
   const scale = 2;
   const F = "'Apple SD Gothic Neo','Malgun Gothic',sans-serif";
 
-  const sorted = [...promoItems].sort((a, b) =>
+  const sorted = promoItems.filter(p => !p.hideInList).sort((a, b) =>
     (a.category || '기타').localeCompare(b.category || '기타') || a.name.localeCompare(b.name)
   );
   const catOrder = ['소모품', '치과용품', '약제', '선물세트'];
@@ -4529,7 +4536,7 @@ function renderPromoItems() {
     <tr>
       <td><button onclick="showPromoDetail('${p.id}')" style="background:none;border:0;padding:0;font:inherit;font-weight:700;color:var(--primary);text-decoration:underline;cursor:pointer;text-align:left">${escapeHtml(p.name)}</button></td>
       <td class="td-num">${fmtNum(p.price)}</td>
-      <td><span class="badge badge-gray">${p.category || '-'}</span></td>
+      <td><span class="badge badge-gray">${p.category || '-'}</span>${p.hideInList ? '<span class="badge badge-gray" style="margin-left:4px">목록 숨김</span>' : ''}</td>
       <td>
         <button class="btn btn-outline btn-sm" onclick="editPromoItem('${p.id}')">수정</button>
         <button class="btn btn-outline btn-sm" style="margin-left:4px;color:var(--danger)" onclick="deletePromoItem('${p.id}')">삭제</button>
@@ -4547,9 +4554,11 @@ function openPromoModal(id = null) {
     document.getElementById('pm-category').value = p.category || '';
     document.getElementById('pm-url').value = p.mallUrl || PROMO_MALL_INFO[p.name]?.url || '';
     document.getElementById('pm-spec').value = p.spec || PROMO_MALL_INFO[p.name]?.spec || '';
+    document.getElementById('pm-hide-list').checked = !!p.hideInList;
     pendingPromoImg = p.img || '';
   } else {
     ['pm-name','pm-price','pm-category','pm-url','pm-spec'].forEach(k => document.getElementById(k).value = '');
+    document.getElementById('pm-hide-list').checked = false;
     pendingPromoImg = '';
   }
   renderPromoImgPreview();
@@ -4564,14 +4573,15 @@ function savePromoItem() {
   const category = document.getElementById('pm-category').value.trim();
   const mallUrl = document.getElementById('pm-url').value.trim();
   const spec = document.getElementById('pm-spec').value.trim();
+  const hideInList = document.getElementById('pm-hide-list').checked;
   if (!name) return alert('품목명을 입력하세요.');
   if (isNaN(price)) return alert('가격을 입력하세요.');
   if (mallUrl && !/^https?:\/\//i.test(mallUrl)) return alert('링크는 http:// 또는 https:// 로 시작해야 합니다.');
   if (editingPromoId) {
     const p = promoItems.find(x => x.id === editingPromoId);
-    Object.assign(p, { name, price, category, mallUrl, spec, img: pendingPromoImg });
+    Object.assign(p, { name, price, category, mallUrl, spec, hideInList, img: pendingPromoImg });
   } else {
-    promoItems.push({ id: uid(), name, price, category, mallUrl, spec, img: pendingPromoImg });
+    promoItems.push({ id: uid(), name, price, category, mallUrl, spec, hideInList, img: pendingPromoImg });
   }
   save();
   closePromoModal();
