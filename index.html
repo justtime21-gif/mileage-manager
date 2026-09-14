@@ -619,9 +619,11 @@
                 <canvas id="report-canvas" style="width:100%;display:block"></canvas>
               </div>
               <div id="report-spend-toggles" style="margin-top:10px"></div>
+              <div id="report-sent-status" class="text-sm" style="margin-top:10px;color:var(--gray-500)"></div>
               <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
                 <button class="btn btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="openSpendFromReport()">+ 차감 추가</button>
                 <button class="btn btn-accent" onclick="copyReportImage()">📋 이미지 복사</button>
+                <button class="btn btn-primary" onclick="markReportSent()">✅ 보냄 처리</button>
                 <button class="btn btn-outline" onclick="copyPromoListImage()" style="border-color:#059669;color:#059669">🎁 판촉물 목록 이미지 복사</button>
               </div>
             </div>
@@ -4807,6 +4809,7 @@ function renderReport() {
   document.getElementById('report-period-end').value = d.rxEnd || '';
 
   drawReport(d, document.getElementById('report-canvas'));
+  renderReportSentStatus();
 }
 
 // 보고서 캔버스 그리기. 현재 데이터(renderReport)와 저장된 마지막 보고서(renderRxLastReport)가 공유한다.
@@ -4989,6 +4992,26 @@ function saveReportSnapshot() {
   renderReport();
 }
 
+// 보고서를 실제로 보냈다고 기록한다. 복사·다운로드만으로 자동 저장하면 미리 보기만 해도
+// 보낸 것으로 처리돼, 다음 보고서에서 아직 안 보낸 차감이 빠진다. 반대로 아무 데서도
+// 저장하지 않으면 이미 보낸 차감이 다음 보고서에 다시 실린다. 그래서 사람이 직접 찍는다.
+function markReportSent() {
+  const d = getReportData();
+  if (!d) { alert('거래선을 먼저 선택하세요.'); return; }
+  if (!confirm(`${d.c.name} 보고서를 보낸 것으로 기록합니다.\n최종 잔액: ${fmt(d.balance)}\n\n다음 보고서는 이 잔액에서 이어지고, 지금 표에 있는 차감은 다시 나오지 않습니다.`)) return;
+  saveReportSnapshot();
+  alert('✅ 보냄 처리했습니다.');
+}
+
+function renderReportSentStatus() {
+  const wrap = document.getElementById('report-sent-status');
+  if (!wrap) return;
+  const snap = reportSnapshots[document.getElementById('report-clinic').value];
+  wrap.textContent = snap
+    ? `마지막 보냄 처리: ${snap.date || '-'} · 그때 잔액 ${fmt(snap.balance || 0)}`
+    : '아직 보냄 처리한 보고서가 없습니다. 카톡으로 보낸 뒤 [보냄 처리]를 누르세요.';
+}
+
 async function copyReportImage() {
   const canvas = document.getElementById('report-canvas');
   try {
@@ -4998,8 +5021,7 @@ async function copyReportImage() {
         'image/png': new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
       })
     ]);
-    saveReportSnapshot();
-    alert('✅ 이미지가 복사되었습니다.\n카톡 채팅창에 붙여넣기(Cmd+V) 하세요.\n\n이번 최종 잔액을 기억해 다음 보고서가 이어서 계산됩니다.');
+    alert('✅ 이미지가 복사되었습니다.\n카톡 채팅창에 붙여넣기(Cmd+V) 하세요.\n\n실제로 보낸 뒤 [보냄 처리]를 눌러야 다음 보고서가 이어서 계산됩니다.');
   } catch (e) {
     // 폴백: 이미지를 새 탭으로 열어 수동 복사 안내
     const url = canvas.toDataURL('image/png');
