@@ -482,6 +482,11 @@
                   </div>
                 </div>
 
+                <label style="display:flex;align-items:center;gap:6px;margin-bottom:16px;font-size:13px;color:var(--gray-700);cursor:pointer">
+                  <input type="checkbox" id="rx-chx" checked onchange="toggleRxChx(this.checked)">
+                  클로르헥시딘(CHX) 포함 — 거래처별로 기억됩니다
+                </label>
+
                 <div style="margin-bottom:16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px">
                   <div class="flex justify-between items-center" style="margin-bottom:8px">
                     <span style="font-size:13px;font-weight:700;color:#1e40af">📷 통계 사진 인식</span>
@@ -3298,6 +3303,7 @@ function renderRxClinicSelect() {
 function onRxClinicChange() {
   updateRxRate();
   setRxPeriodForClinic(document.getElementById('rx-clinic')?.value || '');
+  syncRxChx();
   showPrevRxBtn();
 }
 
@@ -3306,6 +3312,34 @@ function updateRxRate() {
   const opt = sel.options[sel.selectedIndex];
   if (opt && opt.dataset.rate) document.getElementById('rx-rate').value = opt.dataset.rate;
   calcRxTotal();
+}
+
+// 거래처별 클로르헥시딘 포함 여부. 설정을 저장한 적이 없으면 직전 처방에 CHX가
+// 있었는지로 정한다 — 기존 거래처도 따로 손대지 않고 예전 상태 그대로 체크된다.
+function isChxDrug(name) { return (name || '').includes('클로르헥시딘'); }
+
+function clinicIncludesChx(clinicId) {
+  const c = clinics.find(x => x.id === clinicId);
+  if (!c) return true;
+  if (typeof c.includeChx === 'boolean') return c.includeChx;
+  const prev = transactions
+    .filter(t => t.clinicId === clinicId && t.type === 'earn')
+    .sort((a, b) => b.createdAt - a.createdAt)[0];
+  return prev ? (prev.items || []).some(i => isChxDrug(i.name)) : true;
+}
+
+function syncRxChx() {
+  const clinicId = document.getElementById('rx-clinic').value;
+  const box = document.getElementById('rx-chx');
+  if (!box) return;
+  box.checked = clinicIncludesChx(clinicId);
+  box.disabled = !clinicId;
+}
+
+function toggleRxChx(on) {
+  const c = clinics.find(x => x.id === document.getElementById('rx-clinic').value);
+  if (c) { c.includeChx = on; save(); }
+  if (!on) { rxItems = rxItems.filter(r => !isChxDrug(r.name)); renderRxItemRows(); }
 }
 
 function showPrevRxBtn() {
@@ -3332,7 +3366,8 @@ function showPrevRxBtn() {
 
 // 이전 처방의 품목·단가만 가져온다. 처방량은 비운다.
 function applyPrevRxItems(prev) {
-  rxItems = (prev.items || []).map(it => ({
+  const keepChx = clinicIncludesChx(document.getElementById('rx-clinic').value);
+  rxItems = (prev.items || []).filter(it => keepChx || !isChxDrug(it.name)).map(it => ({
     id: uid(),
     drugId: it.drugId || '',
     name: it.name || '',
@@ -3690,7 +3725,8 @@ function applyOcrResult(text) {
     document.getElementById('rx-end').value = period.end;
   }
 
-  const found = matchOcrDrugs(lines, rxDrugs);
+  const keepChx = clinicIncludesChx(document.getElementById('rx-clinic').value);
+  const found = matchOcrDrugs(lines, rxDrugs).filter(f => keepChx || !isChxDrug(f.drug.name));
 
   const periodMsg = period ? `<span style="color:#1e40af">📅 처방 기간 자동 설정: ${fmtPeriod(period.start, period.end)}</span><br>` : '';
 
@@ -3729,6 +3765,7 @@ function calcRxTotal() {
 
 function clearRxForm() {
   document.getElementById('rx-clinic').value = '';
+  syncRxChx();
   rxPeriodClinicId = null;
   setDefaultRxPeriod();
   document.getElementById('rx-rate').value = 10;
