@@ -4725,11 +4725,18 @@ function getReportData() {
   const snapshot = newEarnTxs.length ? lastSnapshot : null;
 
   const rate = latestEarnTx ? latestEarnTx.rate : c.rate;
-  const items = [];
+  // 여러 달을 따로 입력한 경우 같은 품목(이름·단가 동일)은 한 줄로 합친다.
+  const itemMap = new Map();
   earnTxs.forEach(t => (t.items || []).forEach(it => {
     const qty = parseFloat(it.qty) || 0, price = parseFloat(it.price) || 0;
-    items.push({ name: it.name, qty, price, amount: qty * price, mileage: Math.round(qty * price * rate / 100) });
+    const key = `${it.name}|${price}`;
+    const row = itemMap.get(key) || { name: it.name, qty: 0, price, amount: 0, mileage: 0 };
+    row.qty += qty;
+    row.amount += qty * price;
+    row.mileage += Math.round(qty * price * rate / 100);
+    itemMap.set(key, row);
   }));
+  const items = [...itemMap.values()];
   const monthTotal = items.reduce((s, i) => s + i.amount, 0);
   const monthMileage = earnTxs.reduce((s, t) => s + t.amount, 0);
 
