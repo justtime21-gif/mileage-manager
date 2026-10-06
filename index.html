@@ -4757,26 +4757,13 @@ function getReportData() {
     (hiddenKeys.has(row.key) ? hiddenSpendRows : spendRows).push(row);
   }));
   const monthSpend = spendRows.reduce((s, r) => s + r.amount, 0);
-  const hiddenSpend = hiddenSpendRows.reduce((s, r) => s + r.amount, 0);
 
   const { earned, spent, balance, initial } = getClinicBalance(clinicId);
 
-  // 지난 보고서를 보낸 시점의 잔액에서 이어간다. 그래야 거래선이 받은 직전 보고서의
-  // 최종 잔액과 이번 보고서의 시작 잔액이 정확히 맞물린다.
-  // "이전 잔액 + 이번 적립 - 차감 합계 = 최종 잔액"은 어느 경우에도 성립한다.
-  let previousBalance;
-  if (snapshot) {
-    previousBalance = snapshot.balance;
-  } else {
-    const previousEarned = allEarnTxs
-      .filter(t => !earnTxs.some(e => e.id === t.id))
-      .reduce((sum, t) => sum + (t.amount || 0), 0);
-    const previousSpent = transactions
-      .filter(t => t.clinicId === clinicId && t.type === 'spend' && (!refDate || t.date < refDate))
-      .reduce((sum, t) => sum + (t.amount || 0), 0);
-    previousBalance = initial + previousEarned - previousSpent;
-  }
-  previousBalance -= hiddenSpend;
+  // 이전 잔액은 현재 잔액에서 거꾸로 구한다. 그래야 표의 최종 잔액(현재 잔액)과
+  // "이전 잔액 + 이번 적립 - 차감 합계 = 최종 잔액"이 항상 맞는다. 표에서 뺀 차감은
+  // 자연히 이전 잔액에 녹아든다. 거래선이 받은 숫자와 다르면 '잔액 재설정'으로 맞춘다.
+  const previousBalance = balance - monthMileage + monthSpend;
 
   // 처방 기간 문자열 — 새 처방이 여러 건이면 전체 범위를 표시
   let periodStr = '';
@@ -4919,10 +4906,7 @@ function drawReport(d, canvas) {
     drawRow(['처방 내역 없음', '', '', '', ''], '#ffffff', '#9ca3af', false);
   }
   drawRow(['처방액 합계', '', '', fmtNum(d.monthTotal), fmtNum(d.monthMileage)], '#ddebf7', '#1f4e79', true);
-  const prevLabel = d.snapshot?.date
-    ? `이전 마일리지 잔액 (${d.snapshot.date.slice(2).replace(/-/g, '.')} 보고 기준)`
-    : '이전 마일리지 잔액';
-  drawRow([prevLabel, '', '', '', fmtNum(d.previousBalance)], '#f5f3ff', '#6d28d9', true);
+  drawRow(['이전 마일리지 잔액', '', '', '', fmtNum(d.previousBalance)], '#f5f3ff', '#6d28d9', true);
   const beforeSpend = d.previousBalance + d.monthMileage;
   drawRow(['적립 후 누적 마일리지 (차감 전)', '', '', '', fmtNum(beforeSpend)], '#fce4d6', '#c55a11', true);
 
